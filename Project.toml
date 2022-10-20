@@ -1,0 +1,13 @@
+name = "Objects"
+uuid = "8ef16998-80e7-4ac2-af3d-68a9253c2b78"
+authors = ["Zeke Randolph"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
