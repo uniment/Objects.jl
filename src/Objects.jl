@@ -1,10 +1,10 @@
 # dynamic objects with prototype inheritance
 
-module Objects
-export Object, getprototype, setprototype!, keys, values, free, lock!
+#module Objects
+#export Object, getprototype, setprototype!, keys, values, free, lock!
 
 
-
+begin
 """
 `Object`: Objects with prototype inheritance.
 
