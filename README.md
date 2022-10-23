@@ -1,6 +1,6 @@
 # Objects.jl
 
-Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership
+Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership for Julia
 
 Play with it and see what you think. Prototype inheritance is fun!
 
@@ -25,7 +25,7 @@ Three different types of `Object` are provided: `Static`, `Mutable`, and `Dynami
 ## Constructing Objects
 
 ```julia
-    Object{[Param]}([Type]; kwargs...)
+    Object{[Param]}([ObjectType]; kwargs...)
     Object{[Param]}([ObjectType,] props::AbstractDict[, Val(:r)])
     Object{[Param]}([ObjectType,] props::Generator)
     Object{[Param]}([ObjectType,] obj::Object...)
@@ -39,7 +39,7 @@ mut = Object(x=1, y=2)          # default is mutable
 mut.x + mut.y                   # 3
 mut.x = 2
 mut.x + mut.y                   # 4
-mut.z = 3                       # error; can't add property to Mutable after construction
+mut.z = 3                       # error; can't add property to `Mutable` after construction
 ```
 
 ### Dynamic and static object types
@@ -50,7 +50,7 @@ dyn.z = 3                       # can change anything at any time
 dyn.x + dyn.y + dyn.z           # 6
 
 stc=Object(Static, x=1, y=2)    # can't be changed at all after creation
-stc.x = 2                       # error; can't change Static at all after construction
+stc.x = 2                       # error; can't change `Static` at all after construction
 ```
 
 `Dynamic` is very easy and casual to use, but unfortunately low-performance due to type instability.
@@ -60,10 +60,10 @@ stc.x = 2                       # error; can't change Static at all after constr
 Keep property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
 
 ```julia
-obj = Object(Mutable, a=1, b=2) # Mutable is the default
-dyno = Object(Dynamic, obj)     # Create Dynamic from Mutable
+obj = Object(Mutable, a=1, b=2) # `Mutable` is the default
+dyno = Object(Dynamic, obj)     # Create `Dynamic` from `Mutable`
 dyno.c = 3
-locked = Object(Static, dyno)   # Create Static from Dynamic
+locked = Object(Static, dyno)   # Create `Static` from `Dynamic`
 ```
 
 ### Nested structures
@@ -136,7 +136,7 @@ An `Object` can have member-specific methods:
 obj = Object(Dynamic, a=2)
 computefunc = function(this, b) this.a * b end
 obj.compute = computefunc
-obj.compute(3)                  #-> 6
+obj.compute(3)                  # 6
 ```
 
 Calling `obj.compute` passes `obj` in as the first argument.
@@ -162,7 +162,7 @@ If it's desired for an object to store a function for later retrieval, then stor
 
 ```julia
 obj = Object(storedfunc = Ref(computefunc))
-obj.storedfunc[]                # retrieves the function with no closure
+obj.storedfunc[]                # retrieves the function as-is
 ```
 
 ### Note
@@ -176,9 +176,9 @@ Because every function has a different type signature, you cannot mutate the mem
     (proto::Object)([ObjectType,] obj::Object...) 
 ```
 
-Every `Object` instance is a functor; calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the object's own properties. Alternatively, splat in another object's properties.
+Every `Object` instance is a functor; calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the object's own properties. Alternatively, splat in another object's properties for a form of multiple inheritance (although a reference to the splatted object is not kept).
 
-Think of it like the object is picking up new tricks and being repackaged.
+Think of it like the prototype is picking up new tricks and being repackaged.
 
 ```julia
 obj = Object(a=1, b=2)
@@ -193,9 +193,9 @@ newNewObj = newObj(c=5, d=6)
 
 Implementation-wise, `newObj` stores a reference to its prototype `obj`; all properties and methods of `obj` are accessible to `newObj`, and any changes to `obj` will be reflected by `newObj`.
 
-Note that because these `Object`s are `Mutable`, any properties not declared as "own" properties cannot be changed. This means that `newObj.a` cannot be changed, since it was never declared as its own property, and it will always reflect `obj.a`. To make arbitrary changes use `Dynamic` objects.
+Note that because these `Object`s are `Mutable`, any properties not declared as "own" properties cannot be changed. This means that `newObj.a` cannot be changed, since it was never declared as its own property, and it will always reflect `obj.a`. To make arbitrary changes use `Dynamic` objects instead.
 
-Because inheriting objects store a reference to their prototype, it is possible to build inheritance chains where traits are replicated and pass through many inheriting objects.
+Because prototypes are inherited by storing a reference, it is possible to build inheritance chains where traits are replicated and pass through many inheriting objects.
 
 ### Multiple Inheritance
 
