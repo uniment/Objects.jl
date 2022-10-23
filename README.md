@@ -2,7 +2,7 @@
 
 Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership
 
-This project is currently in "toy" phase. Play with it and let me know what you think. Prototype inheritance is fun!
+This project is currently in "toy" phase; tinkering to see what kind of object orientation is possible with Julia. Play with it and see what you think. Prototype inheritance is fun!
 
 ## Installation
 
@@ -20,7 +20,7 @@ In addition, `Object`s can inherit traits from each other through prototype inhe
 
 Object-specific methods can also be inherited, overridden, and extended. Type inferencing can be used for polymorphism.
 
-Three different types of `Object` are provided: `Static`, `Mutable`, and `Dynamic`. If left unspecified, the default is `Mutable`. While `Dynamic` objects can be changed arbitrarily at will, `Static` objects cannot be changed after creation. `Mutable` objects have properties that can be changed after creation, but new properties cannot be added and property types cannot be changed.
+Three different types of `Object` are provided: `Static`, `Mutable`, and `Dynamic`. If left unspecified, the default is `Mutable`. `Dynamic` objects can be changed at any time, arbitrarily at will, while `Static` objects cannot be changed at all after creation. For `Mutable` objects the property values can be changed after creation, but new properties cannot be added and property types cannot be changed.
 
 ## Constructing Objects
 
@@ -39,7 +39,7 @@ mut = Object(x=1, y=2)          # default is mutable
 mut.x + mut.y                   # 3
 mut.x = 2
 mut.x + mut.y                   # 4
-mut.z = 3                       # error
+mut.z = 3                       # error; can't add property to Mutable after construction
 ```
 
 ### Dynamic and static object types
@@ -50,10 +50,21 @@ dyn.z = 3                       # can change anything at any time
 dyn.x + dyn.y + dyn.z           # 6
 
 stc=Object(Static, x=1, y=2)    # can't be changed at all after creation
-stc.x = 2                       # error
+stc.x = 2                       # error; can't change Static at all after construction
 ```
 
 `Dynamic` is very easy and casual to use, but unfortunately low-performance due to type instability.
+
+### Changing Object Type
+
+Keep property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
+
+```julia
+obj = Object(Mutable, a=1, b=2) # Mutable is the default
+dyno = Object(Dynamic, obj)     # Create Dynamic from Mutable
+dyno.c = 3
+locked = Object(Static, dyno)   # Create Static from Dynamic
+```
 
 ### Nested structures
 
@@ -70,7 +81,7 @@ obj.b.c                         # "Hello!"
 
 ### Unpacking Dictionaries
 
-Recursive with argument `Val(:r)` 
+Recursive flag argument `Val(:r)` 
 
 ```julia
 using TOML
@@ -94,20 +105,19 @@ newObj = Object(obj...)
 obj == newObj                   # false
 ```
 
-### Changing Object Type
+### Destructuring Objects
 
-Keep object structure and values, but change the object type between `Dynamic`, `Mutable`, or `Static`.
-
+`Object`s can be destructured like any other object with properties:
 ```julia
-obj = Object(Mutable, a=1, b=2) # Mutable is the default
-dyno = Object(Dynamic, obj)
-dyno.c = 3
-locked = Object(Static, dyno)
+obj = Object(x=1, y=2, z=3)
+let (; x, y) = obj
+    #= do stuff with locally scoped definitions of x and y =#
+end
 ```
 
 ### Modeling Objects off Arbitrary Objects
 
-If it can be accessed with `.` dot syntax, it can be turned into an `Object`.
+If it can be accessed with `.` dot syntax, it can be `Object`ified.
 
 ```julia
 struct MyStruct
@@ -118,7 +128,7 @@ instance = MyStruct(3.14, "Hi there")
 obj = Object(instance)
 ```
 
-## Member Methods
+## Member Method Encapsulation
 
 An `Object` can have member-specific methods:
 
@@ -168,13 +178,17 @@ Because every function has a different type signature, you cannot mutate the mem
 
 Every `Object` instance is a functor; calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the object's own properties. Alternatively, splat in another object's properties.
 
+Think of it like the object is picking up new tricks and being repackaged.
+
 ```julia
 obj = Object(a=1, b=2)
-newObj = obj(b=3, c=4)
 (obj.a, obj.b)                  # (1, 2)
+newObj = obj(b=3, c=4)
 (newObj.a, newObj.b, newObj.c)  # (1, 3, 4)
 obj.a = 2
 (newObj.a, newObj.b, newObj.c)  # (2, 3, 4)
+newNewObj = newObj(c=5, d=6)
+[newNewObj[s] for s ∈ (:a,:b,:c,:d)]    # [2, 3, 5, 6]
 ```
 
 Implementation-wise, `newObj` stores a reference to its prototype `obj`; all properties and methods of `obj` are accessible to `newObj`, and any changes to `obj` will be reflected by `newObj`.
@@ -194,12 +208,14 @@ child.firstname, child.lastname, child.hobby
 # from self, inherited from parent, and adopted from friend
 ```
 
+Inheritance comes primarily from parent, but friend's preferences get splatted in and override parent's.
+
 ### Breaking Inheritance
 
 To create a new independent object with the same properties but breaking the inheritance chain, splat the object:
 
 ```julia
-libertine = Object(newObj...)
+libertine = Object(child...)
 ```
 
 ## Type Dispatch
@@ -221,10 +237,10 @@ This method behavior automatically extends to inheriting objects, as long as the
 g(a(x=2)), g(b(x=2))            # (4, -4)
 ```
 
-To break type while inheriting other traits:
+To change type, while inheriting other traits:
 
 ```julia
-aneg = Object{:neg}(a)
+a_neg = Object{:neg}(a)
 ```
 
 ### Method Object Type Polymorphism
