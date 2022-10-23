@@ -2,6 +2,8 @@
 
 Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership
 
+This project is currently in "toy" phase. Play with it and let me know what you think. Prototype inheritance is fun!
+
 ## Installation
 
 To install from GitHub:
