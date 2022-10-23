@@ -2,7 +2,7 @@
 
 Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership
 
-This project is currently in "toy" phase; tinkering to see what kind of object orientation is possible with Julia. Play with it and see what you think. Prototype inheritance is fun!
+Play with it and see what you think. Prototype inheritance is fun!
 
 ## Installation
 
