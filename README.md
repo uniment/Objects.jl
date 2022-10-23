@@ -1,6 +1,6 @@
 # Objects.jl
 
-Dynamic Objects with Prototype Inheritance and Method Membership
+Static, Mutable, and Dynamic Objects with Prototype Inheritance and Method Membership
 
 ## Installation
 
