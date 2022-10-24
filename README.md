@@ -4,7 +4,7 @@ Dynamic, Static, and Mutable Objects with Prototype Inheritance, Method Membersh
 
 Play with it and see what you think. Prototype inheritance is fun!
 
-Implementation and interface subject to change per user input.
+Implementation and interface subject to change per user input. This is a work in progress, still fairly flexible. 
 
 ## Installation
 
@@ -36,6 +36,8 @@ Syntax:
 
 ```julia
     Object{[TypeTag]}([ObjectType]; kwargs...)
+    Object{[TypeTag]}([ObjectType,] args...)
+    Object{[TypeTag]}([ObjectType,] args...; kwargs...)
     Object{[TypeTag]}([ObjectType,] props::AbstractDict[, Val(:r)])
     Object{[TypeTag]}([ObjectType,] props::Generator)
     Object{[TypeTag]}([ObjectType,] obj::Any) 
@@ -125,12 +127,12 @@ instance = MyStruct(3.14, "Hi there")
 obj = Object(instance)
 ```
 
-## Changing Object Type and Tag
+## Copying Object with New Type and Tag
 
 Syntax:
 
 ```julia
-    Object{[TypeTag]}([ObjectType,] (obj::Object)...)
+    Object{[TypeTag]}([ObjectType,] obj::Object)
 ```
 
 Keep same property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
@@ -159,7 +161,7 @@ An `Object` can have member-specific methods:
 
 ```julia
 obj = Object(Dynamic, a=2)
-computefunc = function(this, b) this.a * b end
+computefunc = function(self, b) self.a * b end
 obj.compute = computefunc
 @show obj.compute(3)            # 6
 ```
@@ -173,9 +175,9 @@ Implementation-wise, accessing `obj.compute` yields a closure which captures `ob
 ```julia
 obj = Object(a=1, b=2, 
     func = let
-        function f(this) this.a + this.b end
-        function f(this, x::Int) this.a + x end
-        function f(this, x::Float64) x end
+        function f(self) self.a + self.b end
+        function f(self, x::Int) self.a + x end
+        function f(self, x::Float64) x end
     end
 )
 @show obj.func()                # 3
@@ -208,8 +210,7 @@ To change some functions but keep the other properties and methods, either use s
 Syntax:
 
 ```julia
-    (proto::Object)([ObjectType;] props...)
-    (proto::Object)([ObjectType,] (obj::Object)...) 
+    (proto::Object)([ObjectType,] [args...] [; props...])
 ```
 
 Every `Object` instance is a functor, and calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the new object's own properties. Alternatively, splat in another object.
@@ -283,9 +284,53 @@ e = Object(m=9, n=10);
 @show Dict(x) == Dict(y)
 ```
 
-## Type Tagging for Type Dispatch
+### Design Pattern: Setting Prototype and Default Traits
 
-`Object`s have a type tag which doesn't affect `Object` behavior per se, but allows methods to specialize on multiple dispatch. This tag can be a `Type`, a `Symbol`, a `Tuple`, a number... anything for which `isbits` evaluates to true. For example:
+Typically, you want objects of a certain class to share common behaviors and perhaps some set of properties, and to have a remaining set of personalizable traits that are instance-specific and possibly mutable.
+
+The shared behaviors can obviously be included using a prototype.
+
+As for the traits, defaults can be splatted in as a template, and then further overridden on an instance-by-instance basis. They can serve as placeholders, setting a) which traits will be personalized, b) reasonable defaults, and c) what datatypes they will hold. Example:
+
+```julia
+Person = Object(
+    arms=2, 
+    legs=2, 
+    talk=function(self) self.age > 5 ? :loud : :quiet end,
+    traits = Object(Static, 
+        age=0.0,    # years
+        height=0.0, # centimeters
+        siblings=0, # 
+        name=""
+    )
+)
+
+amy = Person(Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
+amy.height = 45.5; # Amy has just been born, but is still zero years old
+@show amy
+@show amy.talk()
+```
+
+The type of `Person.traits` doesn't matter here because it's just splatted in, other than for how quickly it can be splatted.
+
+Notice how `Person.traits` serves as a placeholder to set default personal values and their types. This allows `Mutable` instances to have their personalizable traits updated after construction, and `Static` instances can have default values for traits that might otherwise be left unspecified.
+
+Additional note when using `Mutable` and `Static` types: the resulting object type matters because when the object is passed to a function, the function is compiled to that type. When using the same prototype and default traits, the object type is fully consistent (even down to the argument ordering!). This means that functions that have been compiled for one instance, don't have to be recompiled for additional instances.
+
+```julia
+joe = Person(Person.traits..., name="Joe", age=45, siblings=3)
+@show typeof(joe)
+@show typeof(joe) == typeof(amy)
+```
+
+### Design Pattern: Adapters
+
+use ur imaginatino oy
+
+
+## Type Tagging for Multiple Dispatch
+
+`Object`s have an optional type tag which doesn't affect `Object` behavior per se, but allows methods to specialize on multiple dispatch. This tag can be a `Type`, a `Symbol`, a `Tuple`, a number... anything for which `isbits` evaluates to true. For example:
 
 ```julia
 a = Object{:pos}(x=5)
@@ -302,24 +347,34 @@ This type tag is automatically inherited.
 @show g(a(x=2)), g(b(x=2))      # (4, -4)
 ```
 
-To change type while *copying* other traits, keeping same prototype:
+To change type while *inheriting* traits (i.e., using `a` as a prototype):
+```julia
+a_neg = Object{:neg}(a())
+```
+
+To change type while *copying* traits (i.e., copying `a`'s properties and keeping `a`'s prototype):
 
 ```julia
 a_neg = Object{:neg}(a)
 ```
 
-To change type while *inheriting* other traits:
+To change type while *flattening* traits (i.e., copying `a`'s properties and any from `a`'s prototype):
+
 ```julia
-a_neg = Object{:neg}(a())
+a_neg = Object{:neg}(a...)
 ```
+
+When unspecified, the type tag default is `Nothing`.
 
 ### Method Object Type Polymorphism
 
+Methods can behave differently depending on the tag type of their caller
+
 ```julia
 traits = Object(age=0, name="", punish = let 
-    function f(this::Object{:child}) "stand in corner for $(this.age) minutes" end
-    function f(this::Object{:teen}) "scold sternly for $(this.age) seconds" end
-    function f(this::Object{:adult}) "express disappointment for $(this.age) years" end
+    function f(self::Object{:child}) "stand in corner for $(self.age) minutes" end
+    function f(self::Object{:teen}) "scold sternly for $(self.age) seconds" end
+    function f(self::Object{:adult}) "express disappointment for $(self.age) years" end
 end)
 tommy = Object{:child}(traits)(name="tommy", age=5)
 jeff  = Object{:adult}(traits)(name="jeff", age=25)
@@ -359,6 +414,14 @@ end
 
 Notice that type hierarchy is defined using a different system than that which defines inheritance.
 
+## Interface
+
+```julia
+    getprototype(obj::Object)::Union{Object, Nothing}
+```
+Gets `obj`'s prototype object.
+
+
 ## Performance Tip
 
 Obviously `Static` will be fastest at runtime and `Dynamic` slowest. Because accessing elements from a `Dynamic` object is type-unstable, calling functions on their values can be slow.
@@ -376,7 +439,7 @@ g(x) = x.a::Int + 1
 
 When accessing a member method, a closure is returned which captures the object and passes it as a first argument:
 ```julia
-obj = Object(a=1, b=2, f=this->this.a+this.b)
+obj = Object(a=1, b=2, f = this -> this.a + this.b)
 somevar = obj.f
 @show somevar()                     # 3
 ```

@@ -1,6 +1,6 @@
 module Objects
 
-export Object, Dynamic, Mutable, Static
+export Object, Dynamic, Mutable, Static, getprototype
 
 abstract type ObjectType end
 
