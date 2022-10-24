@@ -36,8 +36,7 @@ Syntax:
 
 ```julia
     Object{[TypeTag]}([ObjectType,] [args...] [; kwargs...])
-    Object{[TypeTag]}([ObjectType,] props::AbstractDict[, Val(:r)])
-    Object{[TypeTag]}([ObjectType,] props::Generator)
+    Object{[TypeTag]}([ObjectType,] props::AbstractDict)
     Object{[TypeTag]}([ObjectType,] obj::Any) 
 ```
 
@@ -60,7 +59,7 @@ Can also access with `[]` syntax:
 
 ### Dynamic and static object types
 
-For `Mutable` objects, can't change property types or add new ones after object construction:
+For `Mutable` objects, you can't change property types or add new ones after object construction:
 
 ```julia
 mut.x = 2.5                     # error
@@ -71,15 +70,15 @@ mut.z = 3                       # error
 Add type argument of `Static`, `Mutable`, or `Dynamic` to specify object type.
 
 ```julia
-dyn = Object(Dynamic, x=1, y=2)
-dyn.z = 3                       # can change anything at any time
+dyn = Object(Dynamic, x=1, y=2) # can change anything at any time
+dyn.z = 3                       
 dyn.x + dyn.y + dyn.z           # 6
 
 stc = Object(Static, x=1, y=2)  # can't change anything after creation
 stc.x = 2                       # error
 ```
 
-`Dynamic` is very easy and casual to use, but unfortunately instability causes lower performance. Good for hacking and playing, not so good for efficient runtime.
+`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, not so good for efficient runtime. Its flexibility can also be dangerous when incorporated into large complicated inheritance structures.
 
 ### Nested structures
 
@@ -96,22 +95,6 @@ obj = Object(
 @show obj.b.c                   # "Hello!"
 ```
 
-### Unpacking Dictionaries
-
-Recursive flag argument `Val(:r)` 
-
-```julia
-using TOML
-cfg = Object(TOML.parsefile("config.toml"), Val(:r))
-```
-
-### Generators
-
-```julia
-messages = Object((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])
-@show messages.Mark
-```
-
 ### Modeling `Object`s off Arbitrary Composite Types
 
 If its properties are accessible with `.` dot syntax, then it can be `Object`ified.
@@ -125,7 +108,44 @@ instance = MyStruct(3.14, "Hi there")
 obj = Object(instance)
 ```
 
-## Copying Object with New Type and Tag
+### Splatting Dictionaries
+
+Iterable collections should be splatted.
+
+```julia
+obj = Object(Dict(:a=>1, :b=>2)...)
+```
+
+
+### Splatting Generators
+
+```julia
+messages = Object(((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])...)
+@show messages.Mark
+```
+
+### Splatting Objects
+
+```julia
+obj = Object(a=1, b=2)
+newObj = Object(obj...)
+@show (obj...,) == (newObj...,) # true
+@show obj == newObj             # false
+@show Dict(obj...)              # splat `obj` into a dictionary
+```
+
+### Recursive Dictionary Object Construction
+
+If a dictionary is not splatted, then it will be assumed that it is being used to hold a hierarchical structure with nested dictionaries. A new `Object` will be created recursively, with each nested dictionary being represented as a nested `Object`.
+
+```julia
+using TOML
+config = Object(TOML.parsefile("config.toml"))
+```
+
+
+
+## Copying Object into New Type and Tag
 
 Syntax:
 
@@ -142,7 +162,7 @@ dyno.c = 3
 locked = Object(Static, dyno)   # Create `Static` from `Dynamic`
 ```
 
-### Destructuring Objects
+## Destructuring Objects
 
 `Object`s can be destructured like any other object with properties:
 ```julia
@@ -264,22 +284,12 @@ Inheritance comes primarily from parent, but friend's preferences get splatted i
 
 Changes in `parent.lastname` are reflected in `child`, but changes in `friend.hobby` are not.
 
-### Splatting Objects
+### Breaking Inheritance by Splatting Objects
 
 To create a new independent object with the same properties but breaking the inheritance chain, splat the object:
 
 ```julia
 libertine = Object(child...)    # free Kevin
-```
-
-another example:
-
-```julia
-obj = Object(a=1, b=2)
-newObj = Object(obj...)
-@show (obj...,) == (newObj...,) # true
-@show obj == newObj             # false
-@show Dict(obj...)              # splat into a dictionary
 ```
 
 Try this:

@@ -11,10 +11,6 @@ Create a structured `Object` with properties specified by pairs `args` or keywor
 
 Create an `Object` from a dictionary. Add argument `Val(:r)` for recursion.
 
-    Object{[TypeTag]}([ObjectType,] props::Generator)
-
-Create an `Object` from a generator. The generator must produce key,value pairs.
-
     Object{[TypeTag]}([ObjectType,] obj::Any)
 
 Create an `Object` from an arbitrary composite type.    
@@ -48,43 +44,23 @@ end
 Object{UT}(store::OT) where {UT,OT<:ObjectType} = Object{UT,OT}(store)
 
 # constructors for base objects with no prototype
+# too much copypasta ... fix this up someday like a real programmer
 
-# way too much copypasta ... fix this up someday like a real programmer
-
-# using keyword arguments
+# splatted objects and keyword arguments
 Object{UT}(OT::Type{<:ObjectType}, args::Pair...; kwargs...) where {UT} = Object{UT}(OT(nothing, (args...,kwargs...)))
 Object(OT::Type{<:ObjectType}, args::Pair...; kwargs...) = Object{Nothing}(OT(nothing, (args...,kwargs...)))
 Object{UT}(args::Pair...; kwargs...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, (args...,kwargs...)))
 Object(args::Pair...; kwargs...) = Object{Nothing}(; (args...,kwargs...)...)
 
-# dict or generator
-ArgType = Union{AbstractDict{Symbol,<:Any},Base.Generator}
-Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = Object{UT}(OT(nothing, NamedTuple(args)))
-Object(OT::Type{<:ObjectType}, args::ArgType) = Object{Nothing}(OT(nothing, NamedTuple(args)))
-Object{UT}(args::ArgType) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(args)))
-Object(args::ArgType) = Object{Nothing}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(args)))
-# recursive dict
-ArgType = AbstractDict{Symbol,<:Any}
-Object{UT}(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) where {UT} = 
-    Object{UT}(OT(nothing, NamedTuple(k => v isa ArgType ? Object{UT}(OT, v, Val(:r)) : v for (k,v) ∈ args)))
-Object(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) = 
-    Object{Nothing}(OT(nothing, NamedTuple(k => v isa ArgType ? Object(OT, v, Val(:r)) : v for (k,v) ∈ args)))
-Object{UT}(args::ArgType, ::Val{:r}) where {UT} =
-     Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(k => v isa ArgType ? Object{UT}(v, Val(:r)) : v for (k,v) ∈ args)))
-Object(args::ArgType, ::Val{:r}) = Object{Nothing}(args, Val(:r))
-# dict with arbitrary keys (just convert dict and call above functions)
-ArgType = AbstractDict{String,<:Any}
-Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = Object{UT}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
-Object(OT::Type{<:ObjectType}, args::ArgType) = Object{Nothing}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
-Object{UT}(args::ArgType) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
-Object(args::ArgType) = Object{Nothing}(DEFAULT_OBJECT_TYPE, Dict(Symbol{Symbol,Any}(k)=>v for (k,v) ∈ args))
-Object{UT}(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) where {UT} = 
-    Object{UT}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
-Object(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) = 
-    Object{Nothing}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
-Object{UT}(args::ArgType, ::Val{:r}) where {UT} =
-     Object{UT}(DEFAULT_OBJECT_TYPE, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
-Object(args::ArgType, ::Val{:r}) = Object{Nothing}(args, Val(:r))
+# recursive dict expansion
+ArgType = AbstractDict{<:Union{String,Symbol},<:Any}
+Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = 
+    Object{UT}(OT(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object{UT}(OT, v) : v for (k,v) ∈ args)))
+Object(OT::Type{<:ObjectType}, args::ArgType) = 
+    Object{Nothing}(OT(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object(OT, v) : v for (k,v) ∈ args)))
+Object{UT}(args::ArgType) where {UT} =
+    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object{UT}(v) : v for (k,v) ∈ args)))
+Object(args::ArgType) = Object{Nothing}(args)
 
 # user-custom composite types
 Object{UT}(OT::Type{<:ObjectType}, obj) where {UT} = 
@@ -97,7 +73,7 @@ Object(obj) = Object{Nothing}(obj)
 
 _storeof(obj::Object) = getfield(obj, :store)
 
-# taken shamelessly from ConstructionBase.jl
+# cute utility taken shamelessly from ConstructionBase.jl
 @generated function constructorof(::Type{T}) where T
     getfield(parentmodule(T), nameof(T))
 end
@@ -150,13 +126,8 @@ Base.:<<(a::Object, b::Object) = (aproto = getfield(a, :store).prototype; isnoth
 # Object-to-Dictionary conversions
 Base.convert(T::Type{<:AbstractDict}, obj::Object) = begin
     store = _storeof(obj); props = getprops(store)
-    isnothing(getproto(store)) ? T(k=>v for (k,v) ∈ zip(keys(props), values(props))) :
-    merge(convert(T, getproto(store)), T(k=>v for (k,v) ∈ zip(keys(props), values(props))))
-end
-Base.convert(T::Type{<:AbstractDict}, obj::Object, ::Val{:r}) = begin
-    store = _storeof(obj); props = getprops(store)
-    isnothing(getproto(store)) ? T(k=>v isa Object ? convert(T, v, Val(:r)) : v for (k,v) ∈ zip(keys(props), values(props))) :
-    merge(convert(T, getproto(store)), T(k=>v isa Object ? convert(T, v, Val(:r)) : v for (k,v) ∈ zip(keys(props), values(props))))
+    isnothing(getproto(store)) ? T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))) :
+    merge(convert(T, getproto(store)), T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))))
 end
 
 """
