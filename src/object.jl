@@ -106,11 +106,11 @@ Base.iterate(obj::Object, state=0, propnames=propertynames(obj)) = begin
 end
 Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
 Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
-Base.show(io::IO, obj::Object) = begin
-    store = _storeof(obj)
-    print(io, "Object{",string(typeof(obj).parameters[1]),"}", replace(string(typeof(obj).parameters[2].name),"typename"=>""), "(\nprototype: ", 
-        replace(string(isnothing(getproto(store)) ? "none" : string(getproto(store))), "\n"=>"\n    "), ",\nproperties: ⟨", 
-        replace(string(getprops(store)), "NamedTuple"=>"", "\n"=>"\n    ")[2:end-1], "⟩\n)")
+Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin
+    store = _storeof(obj); props = getprops(store)
+    print(io, "Object{",string(UT),", ", string(nameof(OT)), "}(\n    prototype: ", 
+        replace(string(isnothing(getproto(store)) ? "none" : getproto(store)), "\n"=>"\n    "), ",\n    properties: ⟨", 
+        replace(join(((v isa Object ? "\n" : "")*"$k = $v" for (k,v) ∈ zip(keys(props), values(props))), ", "), "\n"=>"\n    "), "⟩\n)")
 end
 Base.copy(obj::Object) = begin
     store = _storeof(obj)
