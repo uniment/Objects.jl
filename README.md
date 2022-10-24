@@ -323,9 +323,17 @@ joe = Person(Person.traits..., name="Joe", age=45, siblings=3)
 @show typeof(joe) == typeof(amy)
 ```
 
-**Point of note**
+**a note**
 
 After a mutable `Object` has been constructed, its property types must remain consistent. However, arbitrary property types can be set during construction. *This applies to overridden types too*. For example, if `joe`'s `age` is set to `45.5`, then it overrides what was an `Int` by default with a floating point number, and `joe`'s type is no longer the same as `amy`'s.
+
+This will usually not cause problems of functionality, but it can cause the functions to be recompiled for different data types.
+
+One can also create objects with the same properties, but in different orders, and these will also cause functions to be recompiled.
+
+Thankfully, in the cases where it actually matters (i.e. lots of repetition), chances are that the objects will be created systematically and will have a single ordering anyway. So it's not a big deal.
+
+It's fun to see though, that although something like ordering of keyword arguments doesn't matter to the programmer, it matters to the computer. That's why `struct`s have a specific ordering, and force the programmer to follow a single ordering. Most of the time it doesn't matter, and `Object`s free the programmer to be so whimsical, but on the occasion when it does matter...
 
 ### Design Pattern: Adapters
 
@@ -459,5 +467,34 @@ But when splatting an object, the original function is given (because we want to
 Dict(obj...)[:f]()                  # error
 @show Dict(obj...)[:f](Object(a=1, b=2))    # 3
 ```
+
+## More
+
+The type of an `Object`'s properties, and how they are stored, is encoded in its second type parameter. For example, try this:
+
+```julia
+@show typeof(Object(Dynamic, a=1, b=2))
+@show typeof(Object(Static,  a=1, b=2))
+@show typeof(Object(Mutable, a=1, b=2))
+```
+
+If you want to test for objects with specific properties, but disregarding the tag type, you can do something like this:
+```julia
+obj1 = Object{1}(a=1, b=2)
+obj2 = Object{2}(a=2, b=1)
+@show obj2 isa typeof(obj1)         # false
+T = Object{<:Any, typeof(obj1).parameters[2]}
+@show obj2 isa T                    # true
+```
+
+This will check that `obj1` and `obj2` have exactly the same arguments in the same order, and are both `Mutable`. Here's something that just checks to see if an object is `Dynamic` or not:
+
+```julia
+obj2 isa Object{<:Any, <:Dynamic}   # false
+```
+
+This allows you to make different implementations depending on how the `Object` is represented internally. I don't know why you would want to, but you can.
+
+How can you filter for `Object`s that store a specific set of parameter names, or with specific types, but disregarding their order or whether they're `Dynamic` or `Static`? It's possible, but unless the type language becomes even more expressive than it already is, is probably a waste of time.
 
 zr
