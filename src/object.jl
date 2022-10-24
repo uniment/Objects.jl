@@ -63,19 +63,36 @@ Object(OT::Type{<:ObjectType}, args::Pair...) = Object{Nothing}(OT(nothing, args
 Object{UT}(args::Pair...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, args))
 Object(args::Pair...) = Object{Nothing}(args...)
 # dict or generator
-ArgType = Union{AbstractDict,Base.Generator}
+ArgType = Union{AbstractDict{Symbol,<:Any},Base.Generator}
 Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = Object{UT}(OT(nothing, NamedTuple(args)))
 Object(OT::Type{<:ObjectType}, args::ArgType) = Object{Nothing}(OT(nothing, NamedTuple(args)))
 Object{UT}(args::ArgType) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(args)))
 Object(args::ArgType) = Object{Nothing}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(args)))
 # recursive dict
-Object{UT}(OT::Type{<:ObjectType}, args::AbstractDict, ::Val{:r}) where {UT} = 
-    Object{UT}(OT(nothing, NamedTuple(k => v isa AbstractDict ? Object{UT}(OT, v, Val(:r)) : v for (k,v) ∈ args)))
-Object(OT::Type{<:ObjectType}, args::AbstractDict, ::Val{:r}) = 
-    Object{Nothing}(OT(nothing, NamedTuple(k => v isa AbstractDict ? Object(OT, v, Val(:r)) : v for (k,v) ∈ args)))
-Object{UT}(args::AbstractDict, ::Val{:r}) where {UT} =
-     Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(k => v isa AbstractDict ? Object{UT}(v, Val(:r)) : v for (k,v) ∈ args)))
-Object(args::AbstractDict, ::Val{:r}) = Object{Nothing}(args, Val(:r))
+ArgType = AbstractDict{Symbol,<:Any}
+Object{UT}(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) where {UT} = 
+    Object{UT}(OT(nothing, NamedTuple(k => v isa ArgType ? Object{UT}(OT, v, Val(:r)) : v for (k,v) ∈ args)))
+Object(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) = 
+    Object{Nothing}(OT(nothing, NamedTuple(k => v isa ArgType ? Object(OT, v, Val(:r)) : v for (k,v) ∈ args)))
+Object{UT}(args::ArgType, ::Val{:r}) where {UT} =
+     Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(k => v isa ArgType ? Object{UT}(v, Val(:r)) : v for (k,v) ∈ args)))
+Object(args::ArgType, ::Val{:r}) = Object{Nothing}(args, Val(:r))
+# dict with arbitrary keys (just convert dict and call above functions)
+ArgType = AbstractDict{String,<:Any}
+Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = Object{UT}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
+Object(OT::Type{<:ObjectType}, args::ArgType) = Object{Nothing}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
+Object{UT}(args::ArgType) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args))
+Object(args::ArgType) = Object{Nothing}(DEFAULT_OBJECT_TYPE, Dict(Symbol{Symbol,Any}(k)=>v for (k,v) ∈ args))
+Object{UT}(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) where {UT} = 
+    Object{UT}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
+Object(OT::Type{<:ObjectType}, args::ArgType, ::Val{:r}) = 
+    Object{Nothing}(OT, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
+Object{UT}(args::ArgType, ::Val{:r}) where {UT} =
+     Object{UT}(DEFAULT_OBJECT_TYPE, Dict{Symbol,Any}(Symbol(k)=>v for (k,v) ∈ args), Val(:r))
+Object(args::ArgType, ::Val{:r}) = Object{Nothing}(args, Val(:r))
+
+# fill this in
+
 # user-custom objects
 Object{UT}(OT::Type{<:ObjectType}, obj) where {UT} = 
     Object{UT}(OT(nothing, NamedTuple(k => getproperty(obj,k) for k ∈ propertynames(obj))))
@@ -115,21 +132,21 @@ Base.iterate(obj::Object, state=0, propnames=propertynames(obj)) = begin
     i > lastindex(propnames) && return nothing
     ((propnames[i] => getproperty(obj, propnames[i]; iscaller=false)), state+1)
 end
-Base.getindex(obj::Object, n::Union{Symbol, String}) = getproperty(obj, Symbol(n))
-Base.setindex!(obj::Object, x, n::Union{Symbol, String}) = setproperty!(obj, Symbol(n), x)
+Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
+Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
 Base.show(io::IO, obj::Object) = begin
     store = _storeof(obj)
     print(io, "Object{",string(typeof(obj).parameters[1]),"}", replace(string(typeof(obj).parameters[2].name),"typename"=>""), "(\nprototype: ", 
-        replace(string(isnothing(store.prototype) ? "none" : string(store.prototype)), "\n"=>"\n    "), ",\nproperties: ⟨", 
+        replace(string(isnothing(getproto(store)) ? "none" : string(getproto(store))), "\n"=>"\n    "), ",\nproperties: ⟨", 
         replace(string(getprops(store)), "NamedTuple"=>"", "\n"=>"\n    ")[2:end-1], "⟩\n)")
 end
 Base.copy(obj::Object) = begin
     store = _storeof(obj)
-    typeof(obj)(typeof(store)(store.prototype, copy(store.properties)))
+    typeof(obj)(typeof(store)(getproto(store), copy(store.properties)))
 end
 Base.deepcopy(obj::Object) = begin
     store = _storeof(obj)
-    typeof(obj)(typeof(store)(deepcopy(store.prototype), copy(store.properties)))
+    typeof(obj)(typeof(store)(deepcopy(getproto(store)), copy(store.properties)))
 end
 Base.:<<(a::Object, b::Object) = (aproto = getfield(a, :store).prototype; isnothing(aproto) ? false : (aproto==b || aproto<<b))
 
