@@ -14,13 +14,18 @@ To install from GitHub:
 ] add https://github.com/uniment/Objects.jl
 ```
 
+and of course,
+```julia
+using Objects
+```
+
 ## About
 
-The `Objects` module implements a type `Object`. Instances of `Object` have properties that can be casually and easily created, accessed, and changed using dot-syntax.
+Instances of `Object` have properties that can be casually and easily created, accessed, and changed using dot-syntax.
 
-In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript `Object`s, but with the benefits of strict inferred typing and immutability.
+In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
 
-Object-specific methods can also be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
+Object-specific methods can be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
 
 Three subtypes of `Object` are provided: `Dynamic`, `Static`, and `Mutable`.
 
@@ -35,9 +40,9 @@ If left unspecified, the default is `Mutable`.
 Syntax:
 
 ```julia
-    Object{[TypeTag]}([ObjectType,] [args...] [; kwargs...])
+    Object{[TypeTag]}([ObjectType,] [args::Pair{Symbol,V} where V...] [; kwargs...])
+    Object{[TypeTag]}([ObjectType,] obj::Any[, args::Pair{Symbol,V} where V...] [; kwargs...]) 
     Object{[TypeTag]}([ObjectType,] props::AbstractDict)
-    Object{[TypeTag]}([ObjectType,] obj::Any [, args...] [; kwargs...]) 
 ```
 
 ### Initialize and use `Object`s
@@ -78,7 +83,9 @@ stc = Object(Static, x=1, y=2)  # can't change anything after creation
 stc.x = 2                       # error
 ```
 
-`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, not so good for efficient runtime. Its flexibility can also be dangerous when incorporated into large complicated inheritance structures.
+`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, throwing stuff together until it works, but not so good for efficient runtime. 
+
+`Dynamic` flexibility can also be dangerous when incorporated into large complicated inheritance structures; once things begin settling down and getting sorted out, start moving structures to `Mutable` or `Static`, or create proper composite types with `struct`.
 
 ### Nested structures
 
@@ -89,29 +96,30 @@ obj = Object(
     a = [1,2,3],
     b = Object(
         c = "Hello!",
-        d = Object()
+        d = Dict(string(k)=>Char(k) for k = 1:255)
     )
 )
 @show obj.b.c                   # "Hello!"
 ```
 
-### Splatting Dictionaries
+### Splatting Dictionaries, Generators, and Objects
 
 Iterable collections should be splatted.
+
+Dictionaries:
 
 ```julia
 obj = Object(Dict(:a=>1, :b=>2)...)
 ```
 
-
-### Splatting Generators
+Generators:
 
 ```julia
 messages = Object(((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])...)
 @show messages.Mark
 ```
 
-### Splatting Objects
+Other `Object`s:
 
 ```julia
 obj = Object(a=1, b=2)
@@ -141,7 +149,7 @@ obj2 = Object(test2)
 test2.a = '🐇'
 obj2.a ≠ test2.a
 ```
-Maybe that can be changed one day, that could be cool.
+Maybe that can be changed one day, that could be cool idk
 
 You can add and override parameters by splatting in more or with keyword arguments:
 
@@ -162,6 +170,10 @@ using TOML
 config = Object(TOML.parsefile("config.toml"))
 ```
 
+The inverse recursive operation can be performed with
+```julia
+convert(Dict, config)
+```
 
 
 ## Copying Object into New Type and Tag
@@ -171,6 +183,8 @@ Syntax:
 ```julia
     Object{[TypeTag]}([ObjectType,] obj::Object)
 ```
+
+Notice that `obj` is *not* being splatted.
 
 Keep same property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
 
@@ -187,7 +201,7 @@ locked = Object(Static, dyno)   # Create `Static` from `Dynamic`
 ```julia
 obj = Object(x=1, y=2, z=3)
 let (; x, y) = obj
-    #= do stuff with locally scoped definitions of x and y =#
+    @show x + y
 end
 ```
 
@@ -247,10 +261,10 @@ To change some functions but keep the other properties and methods, either use s
 Syntax:
 
 ```julia
-    (proto::Object)([ObjectType,] [args...] [; props...])
+    (proto::Object)([ObjectType,] [args::Pair{Symbol, T} where T...] [; props...])
 ```
 
-Every `Object` instance is a functor, and calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the new object's own properties. Alternatively, splat in another object.
+Every `Object` instance is a functor, and calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the new object's own properties. Alternatively, splat in another object(s), generator(s), or dictionary(s).
 
 The new object has the same type as its prototype, unless otherwise specified. Think of it like the prototype is picking up new tricks and being repackaged into a new object.
 
@@ -291,9 +305,9 @@ b.b = 0
 Strictly speaking, multiple inheritance isn't implemented. But you can splat objects together to compose a new object.
 
 ```julia
-parent = Object(firstname="Julia", lastname="Smith", hobby="Fishing")
+parent = Object(firstname="Jeanette", lastname="Smith", hobby="Fishing")
 friend = Object(hobby="Skiing")
-child  = parent(friend...)(firstname="Kevin")
+child  = parent(friend..., firstname="Kevin")
 
 @show child.firstname, child.lastname, child.hobby    
 # from self, inherited from parent, and adopted from friend
@@ -308,7 +322,7 @@ Changes in `parent.lastname` are reflected in `child`, but changes in `friend.ho
 To create a new independent object with the same properties but breaking the inheritance chain, splat the object:
 
 ```julia
-libertine = Object(child...)    # free Kevin
+libertine = Object(child...)    # free Kevin from Jeanette
 ```
 
 Try this:
@@ -348,7 +362,7 @@ Person = Object(
 )
 
 amy = Person(Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
-amy.height = 45.5; # Amy has just been born, but is still zero years old
+amy.height = 45.5; # Amy has now been born, but is still zero years old
 @show amy
 @show amy.talk()
 ```
@@ -361,6 +375,7 @@ Additional note when using `Mutable` and `Static` types: the resulting object ty
 
 ```julia
 joe = Person(Person.traits..., name="Joe", age=45, siblings=3)
+@show joe.talk()
 @show typeof(joe)
 @show typeof(joe) == typeof(amy)
 ```
@@ -401,6 +416,8 @@ This type tag is automatically inherited.
 @show g(a(x=2)), g(b(x=2))      # (4, -4)
 ```
 
+The type tag can also be changed.
+
 To change type while *inheriting* traits (i.e., using `a` as a prototype):
 ```julia
 a_neg = Object{:neg}(a())
@@ -420,9 +437,9 @@ a_neg = Object{:neg}(a...)
 
 When unspecified, the type tag default is `Nothing`.
 
-### Method Object Type Polymorphism
+### Object Type Method Polymorphism
 
-Methods can behave differently depending on the tag type of their caller
+Methods can behave differently depending on the tag type of their caller:
 
 ```julia
 traits = Object(age=0, name="", punish = let 
@@ -436,6 +453,8 @@ jeff  = Object{:adult}(traits)(name="jeff", age=25)
 ```
 
 ### Method Specialization using Type Hierarchy
+
+Type tags, when types are used, can be given hierarchy.
 
 ```julia
 # type hierarchy
@@ -466,7 +485,7 @@ let (; Animal, Human, Dog) = Prototypes
 end
 ```
 
-Notice that type hierarchy is defined using a different system than that which defines inheritance.
+Notice that the path for objects to inherit traits (prototype inheritance) is separate from the path of obtaining type hierarchy (type tagging), so there's flexibility for an object to adopt traits from any other type. It's like a coal miner learning how to code.
 
 ## Interface
 

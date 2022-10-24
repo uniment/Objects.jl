@@ -6,6 +6,7 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 - Make Tests
 - Refactor the various `Object{[TypeTag]}([ObjectType] ... )` definitions into generated functions 
 - add args...;kwargs... constructor syntax to argument of type `Dict`
+- when `Object`ifying arbitrary objects, can we access their base address?
 
 
 ## Strings and numbers
