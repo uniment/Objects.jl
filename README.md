@@ -68,12 +68,6 @@ mut.x = "hello"                 # error
 mut.z = 3                       # error
 ```
 
-this is because
-
-```julia
-mut isa Object{T,<:Mutable} where T
-```
-
 Add type argument of `Static`, `Mutable`, or `Dynamic` to specify object type.
 
 ```julia
@@ -85,7 +79,7 @@ stc = Object(Static, x=1, y=2)  # can't change anything after creation
 stc.x = 2                       # error
 ```
 
-`Dynamic` is very easy and casual to use, but unfortunately low-performance due to type instability.
+`Dynamic` is very easy and casual to use, but unfortunately instability causes lower performance. Good for hacking and playing, not so good for efficient runtime.
 
 ### Nested structures
 
