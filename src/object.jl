@@ -97,20 +97,24 @@ Object(obj) = Object{Nothing}(obj)
 
 _storeof(obj::Object) = getfield(obj, :store)
 
+# taken shamelessly from ConstructionBase.jl
+@generated function constructorof(::Type{T}) where T
+    getfield(parentmodule(T), nameof(T))
+end
 # object type conversion
 Object{UTnew}(OTnew::Type{<:ObjectType}, obj::Object) where UTnew = 
     Object{UTnew}(OTnew(getproto(_storeof(obj)), getprops(_storeof(obj))))
 Object(OTnew::Type{<:ObjectType}, obj::Object{UT,OT}) where {UT,OT} = 
     Object{UT}(OTnew(getproto(_storeof(obj)), getprops(_storeof(obj))))
 Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = 
-    Object{UTnew}(getfield(parentmodule(OT), nameof(OT))(getproto(_storeof(obj)), getprops(_storeof(obj))))
+    Object{UTnew}(constructorof(OT)(getproto(_storeof(obj)), getprops(_storeof(obj))))
 Object(obj::Object) = obj
 
 # dis how we make bebbies
 (prototype::Object{UT})(OT::Type{<:ObjectType}, args::Pair...; kwargs...) where {UT} = 
     Object{UT}(OT(prototype, (args...,kwargs...)))
 (prototype::Object{UT,OT})(args::Pair...; kwargs...) where {UT,OT} = 
-    Object{UT}(getfield(parentmodule(OT), nameof(OT))(prototype, (args...,kwargs...)))
+    Object{UT}(constructorof(OT)(prototype, (args...,kwargs...)))
  
 # interface
 Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is false for nested prototype access
