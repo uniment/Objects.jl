@@ -5,6 +5,7 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 
 - Make Tests
 - Refactor the various `Object{[TypeTag]}([ObjectType] ... )` definitions into generated functions 
+- Add [args...; kwargs...] to Generator and Any input types
 
 
 ## Strings and numbers

@@ -18,11 +18,11 @@ To install from GitHub:
 
 The `Objects` module implements a type `Object`. Instances of `Object` have properties that can be casually and easily created, accessed, and changed using dot-syntax.
 
-In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript `Object`s.
+In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript `Object`s, but with the benefits of strict inferred typing and immutability.
 
-Object-specific methods can also be inherited, overridden, and extended. Objects can be tagged with types, allowing multiple dispatch to implement polymorphism.
+Object-specific methods can also be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
 
-Three subtypes of `Object` are provided: `Static`, `Mutable`, and `Dynamic`.
+Three subtypes of `Object` are provided: `Dynamic`, `Static`, and `Mutable`.
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
 - Static: maximum performance—after construction, properties cannot be changed.
@@ -35,9 +35,7 @@ If left unspecified, the default is `Mutable`.
 Syntax:
 
 ```julia
-    Object{[TypeTag]}([ObjectType]; kwargs...)
-    Object{[TypeTag]}([ObjectType,] args...)
-    Object{[TypeTag]}([ObjectType,] args...; kwargs...)
+    Object{[TypeTag]}([ObjectType,] [args...] [; kwargs...])
     Object{[TypeTag]}([ObjectType,] props::AbstractDict[, Val(:r)])
     Object{[TypeTag]}([ObjectType,] props::Generator)
     Object{[TypeTag]}([ObjectType,] obj::Any) 
@@ -233,6 +231,21 @@ Implementation-wise, `newObj` stores a reference to its prototype `obj`; all pro
 Note that because these `Object`s are the default `Mutable`, any properties not declared as "own" properties cannot be changed. This means that `newObj.a` cannot be changed, since it was never declared as its own property, and it will always reflect `obj.a`. To make arbitrary changes use `Dynamic` objects instead, and to lock `obj` from changing use a `Static` object instead.
 
 Because prototypes are inherited by storing a reference, it is possible to build inheritance chains where traits are replicated and pass through many inheriting objects.
+
+### Fun Note
+
+You can make an object which is *somewhat* static, and *somewhat* mutable, using inheritance:
+```julia
+a = Object(Static, a=1)
+b = a(Mutable, b=2)
+c = b(Static, c=3)
+@show (c...,)
+```
+Object `c` has three accessible properties: `c.a`, `c.b`, and `c.c`. Among these, only `c.b` is mutable by changing `b.b`.
+```julia
+b.b = 0
+@show (c...,)
+```
 
 ### Multiple Inheritance
 
@@ -431,7 +444,9 @@ Notice that type hierarchy is defined using a different system than that which d
 ```julia
     getprototype(obj::Object)::Union{Object, Nothing}
 ```
-Gets `obj`'s prototype object.
+Gets `obj`'s prototype object. 
+
+Unlike JavaScript, an object's prototype cannot be changed (so there's no `setprototype!` function).
 
 
 ## Performance Tip
@@ -465,7 +480,7 @@ Same when destructuring an object:
 But when splatting an object, the original function is given (because we want to be able to splat the function into new objects as a member method)
 ```julia
 Dict(obj...)[:f]()                  # error
-@show Dict(obj...)[:f](Object(a=1, b=2))    # 3
+@show Dict(obj...)[:f](obj)         # 3
 ```
 
 ## More
