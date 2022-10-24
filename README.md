@@ -1,6 +1,6 @@
 # Objects.jl
 
-Dynamic, Static, and Mutable Objects with Prototype Inheritance and Method Membership for Julia
+Dynamic, Static, and Mutable Objects with Prototype Inheritance, Method Membership, and Type Tagging for Julia
 
 Play with it and see what you think. Prototype inheritance is fun!
 
