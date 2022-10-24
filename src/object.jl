@@ -103,12 +103,14 @@ Object{UTnew}(OTnew::Type{<:ObjectType}, obj::Object) where UTnew =
 Object(OTnew::Type{<:ObjectType}, obj::Object{UT,OT}) where {UT,OT} = 
     Object{UT}(OTnew(getproto(_storeof(obj)), getprops(_storeof(obj))))
 Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = 
-    Object{UTnew}(OT.name.wrapper(getproto(_storeof(obj)), getprops(_storeof(obj))))
+    Object{UTnew}(getfield(parentmodule(OT), nameof(OT))(getproto(_storeof(obj)), getprops(_storeof(obj))))
 Object(obj::Object) = obj
 
 # dis how we make bebbies
-(prototype::Object{UT})(OT::Type{<:ObjectType}, args::Pair...; kwargs...) where {UT} = Object{UT}(OT(prototype, (args...,kwargs...)))
-(prototype::Object{UT,OT})(args::Pair...; kwargs...) where {UT,OT} = Object{UT}(OT.name.wrapper(prototype, (args...,kwargs...)))
+(prototype::Object{UT})(OT::Type{<:ObjectType}, args::Pair...; kwargs...) where {UT} = 
+    Object{UT}(OT(prototype, (args...,kwargs...)))
+(prototype::Object{UT,OT})(args::Pair...; kwargs...) where {UT,OT} = 
+    Object{UT}(getfield(parentmodule(OT), nameof(OT))(prototype, (args...,kwargs...)))
  
 # interface
 Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is false for nested prototype access

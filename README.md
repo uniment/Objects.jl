@@ -20,17 +20,17 @@ The `Objects` module implements a type `Object`. Instances of `Object` have prop
 
 In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript `Object`s.
 
-Object-specific methods can also be inherited, overridden, and extended. Type inference can be used for polymorphism.
+Object-specific methods can also be inherited, overridden, and extended. Objects can be tagged with types, allowing multiple dispatch to implement polymorphism.
 
 Three subtypes of `Object` are provided: `Static`, `Mutable`, and `Dynamic`.
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
-- Static: maximum performance—after creation, properties cannot be changed.
+- Static: maximum performance—after construction, properties cannot be changed.
 - Mutable: happy medium—properties can be changed at any time, but they cannot be added and their types cannot change.
 
 If left unspecified, the default is `Mutable`. 
 
-## Constructing Fresh Objects
+## Constructing Objects
 
 Syntax:
 
@@ -107,10 +107,10 @@ using TOML
 cfg = Object(TOML.parsefile("config.toml"), Val(:r))
 ```
 
-### Generating Objects
+### Generators
 
 ```julia
-messages = Object((Symbol(name),"Hello, $name") for name ∈ ["Joe", "Sally", "Mark"]) # can also use (k=>v) pairs
+messages = Object((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])
 @show messages.Mark
 ```
 

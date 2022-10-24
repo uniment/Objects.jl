@@ -1,5 +1,8 @@
 # Things to do
 
+Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameof(OT))".
+
+
 - Make Tests
 - Refactor the various `Object{[TypeTag]}([ObjectType] ... )` definitions into generated functions 
 
