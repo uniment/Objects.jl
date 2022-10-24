@@ -298,7 +298,7 @@ Person = Object(
     legs=2, 
     talk=function(self) self.age > 5 ? :loud : :quiet end,
     traits = Object(Static, 
-        age=0.0,    # years
+        age=0,      # years
         height=0.0, # centimeters
         siblings=0, # 
         name=""
@@ -322,6 +322,10 @@ joe = Person(Person.traits..., name="Joe", age=45, siblings=3)
 @show typeof(joe)
 @show typeof(joe) == typeof(amy)
 ```
+
+**Point of note**
+
+After a mutable `Object` has been constructed, its property types must remain consistent. However, arbitrary property types can be set during construction. *This applies to overridden types too*. For example, if `joe`'s `age` is set to `45.5`, then it overrides what was an `Int` by default with a floating point number, and `joe`'s type is no longer the same as `amy`'s.
 
 ### Design Pattern: Adapters
 
