@@ -53,23 +53,22 @@ Object{UT}(args::Pair...; kwargs...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE
 Object(args::Pair...; kwargs...) = Object{Nothing}(; (args...,kwargs...)...)
 
 # recursive dict expansion
-ArgType = AbstractDict{<:Union{String,Symbol},<:Any}
-Object{UT}(OT::Type{<:ObjectType}, args::ArgType) where {UT} = 
-    Object{UT}(OT(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object{UT}(OT, v) : v for (k,v) ∈ args)))
-Object(OT::Type{<:ObjectType}, args::ArgType) = 
-    Object{Nothing}(OT(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object(OT, v) : v for (k,v) ∈ args)))
-Object{UT}(args::ArgType) where {UT} =
-    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(Symbol(k) => v isa ArgType ? Object{UT}(v) : v for (k,v) ∈ args)))
-Object(args::ArgType) = Object{Nothing}(args)
+Object{UT}(OT::Type{<:ObjectType}, args::AbstractDict) where {UT} = 
+    Object{UT}(OT(nothing, NamedTuple(Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ args)))
+Object(OT::Type{<:ObjectType}, args::AbstractDict) = 
+    Object{Nothing}(OT(nothing, NamedTuple(Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ args)))
+Object{UT}(args::AbstractDict) where {UT} =
+    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ args)))
+Object(args::AbstractDict) = Object{Nothing}(args)
 
 # user-custom composite types
-Object{UT}(OT::Type{<:ObjectType}, obj) where {UT} = 
-    Object{UT}(OT(nothing, NamedTuple(k => getproperty(obj,k) for k ∈ propertynames(obj))))
-Object(OT::Type{<:ObjectType}, obj) =
-    Object{Nothing}(OT(nothing, NamedTuple(k => getproperty(obj,k) for k ∈ propertynames(obj))))
-Object{UT}(obj) where {UT} = 
-    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, NamedTuple(k => getproperty(obj,k) for k ∈ propertynames(obj))))
-Object(obj) = Object{Nothing}(obj)
+Object{UT}(OT::Type{<:ObjectType}, obj, args::Pair...; kwargs...) where {UT} = 
+    Object{UT}(OT(nothing, ((k => getproperty(obj,k) for k ∈ propertynames(obj))...,args...,kwargs...)))
+Object(OT::Type{<:ObjectType}, obj, args::Pair...; kwargs...) =
+    Object{Nothing}(OT, obj, args...; kwargs...)
+Object{UT}(obj, args::Pair...; kwargs...) where {UT} = 
+    Object{UT}(DEFAULT_OBJECT_TYPE, obj, args...; kwargs...)
+Object(obj, args::Pair...; kwargs...) = Object{Nothing}(obj, args...; kwargs...)
 
 _storeof(obj::Object) = getfield(obj, :store)
 

@@ -37,7 +37,7 @@ Syntax:
 ```julia
     Object{[TypeTag]}([ObjectType,] [args...] [; kwargs...])
     Object{[TypeTag]}([ObjectType,] props::AbstractDict)
-    Object{[TypeTag]}([ObjectType,] obj::Any) 
+    Object{[TypeTag]}([ObjectType,] obj::Any [, args...] [; kwargs...]) 
 ```
 
 ### Initialize and use `Object`s
@@ -95,19 +95,6 @@ obj = Object(
 @show obj.b.c                   # "Hello!"
 ```
 
-### Modeling `Object`s off Arbitrary Composite Types
-
-If its properties are accessible with `.` dot syntax, then it can be `Object`ified.
-
-```julia
-struct MyStruct
-    a
-    b
-end
-instance = MyStruct(3.14, "Hi there")
-obj = Object(instance)
-```
-
 ### Splatting Dictionaries
 
 Iterable collections should be splatted.
@@ -133,6 +120,38 @@ newObj = Object(obj...)
 @show obj == newObj             # false
 @show Dict(obj...)              # splat `obj` into a dictionary
 ```
+
+
+### Modeling `Object`s off Arbitrary Composite Types
+
+If its properties are accessible with `.` dot syntax, then it can be `Object`ified.
+
+```julia
+struct Test1 a; b end
+test1 = Test1('🐢', "Hello")
+obj1 = Object(test1)
+```
+
+Unfortunately, changes to an `Object`ified mutable struct won't be reflected:
+
+```julia
+mutable struct Test2 a; b end
+test2 = Test2('🐢', "Hola")
+obj2 = Object(test2)
+test2.a = '🐇'
+obj2.a ≠ test2.a
+```
+Maybe that can be changed one day, that could be cool.
+
+You can add and override parameters by splatting in more or with keyword arguments:
+
+```julia
+obj3 = Object(test1, Dict(:b=>'🐢')...; c='🐢')
+@show (obj3...,)                # turtles all the way down
+```
+
+`Object`ifying arbitrary composite types is not recursive, for hopefully obvious reasons.
+
 
 ### Recursive Dictionary Object Construction
 
