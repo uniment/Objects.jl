@@ -1,10 +1,10 @@
 # Objects.jl
 
-Dynamic, Static, and Mutable Objects with Composition, Prototype Inheritance, Method Membership, and Type Tagging for Julia
+Dynamic, Static, and Mutable Objects with Composition, Template Replication, Prototype Inheritance, Method Membership, and Type Tagging for Julia (whew!)
 
 Play with it and see what you think. Prototype inheritance is fun!
 
-Implementation and interface subject to change per user input. This is a work in progress, still fairly flexible. 
+Implementation and interface unstable. This is experimental; consider it a fancy digital toy for now. 
 
 ## Installation
 
@@ -21,15 +21,19 @@ using Objects
 
 ## About
 
-Instances of `Object` have properties that can be casually and easily created, accessed, and changed using dot-syntax.
+Instances of `Object` have properties that can be casually and easily created and composed, and then accessed and changed using dot-syntax.
 
-In addition, `Object`s can inherit traits from each other through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
+Once an `Object` has been carved into the desired form, it can serve as a "template" for replication, using efficient construction techniques to create clones with the same datatypes but with custom values.
+
+In addition, `Object`s can inherit traits from other `Object`s through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
 
 Object-specific methods can be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
 
 ## Why
 
-Because.
+Composing objects on an ad-hoc basis, instead of architecting classes and hierarchies up-front, can be a very efficient workflow: especially when experimenting on a new project, or when sculpting and customizing complex objects.
+
+It's also just fun. Nobody likes `ERROR: invalid redefinition of constant MyStruct`. (ikik revise.jl)
 
 ## Object Storage Types
 
@@ -45,18 +49,25 @@ If left unspecified, the default is `Mutable`.
 
 ```julia
 # constructing from scratch
-    Object{[TypeTag]}([StorageType,] [args::Pair...] [; kwargs...])
+    Object{[TypeTag]}([StorageType] [; kwargs...])
 # changing type ("converting")
-    Object{[TypeTag]}([StorageType,] obj::Object[, args::Pair...] [; kwargs...])
-    Object{[TypeTag]}([StorageType,] obj::Any[, args::Pair...] [; kwargs...])
-    Object{[TypeTag]}([StorageType,] props::AbstractDict[, args::Pair...] [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
+    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs...])
 # constructing from template
-    (template::Object)([args::Pair...] [; props...])
+    (template::Object)([; props...])
 # prototype inheritance
-    Prototype{[TypeTag]}([StorageType,] proto::Object[, args::Pair...] [; kwargs...])
+    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
 ```
 
-## Constructing Objects
+## Composing Objects
+
+Syntax:
+```julia
+    Object{[TypeTag]}([StorageType] [; kwargs...])
+```
+
+Easy.
 
 ```julia
 mut = Object(x=1, y=2)          # default type is `Mutable`
@@ -94,9 +105,9 @@ stc = Object(Static, x=1, y=2)  # can't change anything after creation
 stc.x = 2                       # error
 ```
 
-`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, throwing stuff together until it works, but not so good for efficient runtime. 
+`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, throwing stuff together before worrying about formalizing, but not so good for efficient runtime. 
 
-`Dynamic` flexibility can also be dangerous when incorporated into large complicated inheritance structures; once things begin settling down and getting sorted out, start moving structures to `Mutable` or `Static`, or create proper composite types with `struct`.
+`Dynamic` flexibility can also be dangerous when incorporated into large complicated inheritance structures; once things begin settling down and getting sorted out, start moving structures to `Mutable` or `Static`, or create composite types with `struct`.
 
 ### Nested structures
 
@@ -115,18 +126,18 @@ obj = Object(
 
 ### Splatting Dictionaries, Generators, and Objects
 
-Iterable collections should be splatted.
+Iterable collections should be splatted into keyword arguments. Later arguments override earlier ones.
 
 Dictionaries:
 
 ```julia
-obj = Object(Dict(:a=>1, :b=>2)...)
+obj = Object(; a=2, Dict(:a=>1, :b=>2)..., b=3)
 ```
 
 Generators:
 
 ```julia
-messages = Object(((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])...)
+messages = Object(; ((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])..., Mark="G'day, Mark")
 @show messages.Mark
 ```
 
@@ -134,14 +145,20 @@ Other `Object`s:
 
 ```julia
 obj = Object(a=1, b=2)
-newObj = Object(obj...)
+newObj = Object(; obj...)
 @show (obj...,) == (newObj...,) # true
 @show obj == newObj             # false
-@show Dict(obj...)              # splat `obj` into a dictionary
+@show Dict(obj...)              # splat `obj` into a dictionary (as regular args, not keyword)
 ```
 
 
-### Modeling `Object`s off Arbitrary Composite Types
+### Modeling Objects off Arbitrary Composite Types
+
+Syntax:
+
+```julia
+    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
+```
 
 If its properties are accessible with `.` dot syntax, then it can be `Object`ified.
 
@@ -165,7 +182,7 @@ Maybe that can be changed one day, that could be cool idk
 You can add and override parameters by splatting in more or with keyword arguments:
 
 ```julia
-obj3 = Object(test1, Dict(:b=>'🐢')...; c='🐢')
+obj3 = Object(test1; Dict(:b=>'🐢')..., c='🐢')
 @show (obj3...,)                # turtles all the way down
 ```
 
@@ -173,6 +190,11 @@ obj3 = Object(test1, Dict(:b=>'🐢')...; c='🐢')
 
 
 ### Recursive Dictionary Object Construction
+
+Syntax:
+```julia
+    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs..
+```
 
 If a dictionary is not splatted, then it will be assumed that it is being used to hold a hierarchical structure with nested dictionaries. A new `Object` will be created recursively, with each nested dictionary being represented as a nested `Object`.
 
@@ -186,10 +208,16 @@ The inverse recursive operation can be performed with
 convert(Dict, config)
 ```
 
+Note that splatting is not recursive; these are special methods for converting between nested dictionaries and `Object`s.
+
 
 ## Copying Object into New Type and Tag
 
 Syntax:
+
+```julia
+    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
+```
 
 Keep same property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
 
@@ -210,7 +238,6 @@ let (; x, y) = obj
 end
 ```
 
-
 ## Member Method Encapsulation
 
 An `Object` can have member-specific methods:
@@ -228,6 +255,8 @@ Implementation-wise, accessing `obj.compute` yields a closure which captures `ob
 
 ### Method Argument Polymorphism
 
+Use the `let` keyword to create local scope to define the flavors of a function, and make it a property of the object. Outside that local scope, the name given to the polymorphic function is invalid.
+
 ```julia
 obj = Object(a=1, b=2, 
     func = let
@@ -240,6 +269,8 @@ obj = Object(a=1, b=2,
 @show obj.func(5)               # 6
 @show obj.func(2.5)             # 2.5
 ```
+
+Of course, you can make the method have global scope too, if desired.
 
 ### Storing Functions
 
@@ -259,9 +290,14 @@ Because every function has a different type signature, you cannot mutate the mem
 obj.storedfunc[] = x -> x^3     # error
 ```
 
-To change some functions but keep the other properties and methods, either use splatting or inheritance, or use a `Dynamic` object type (like the example with `computefunc` above). 
+To change some functions but keep the other properties and methods, either use splatting or inheritance to construct a wholly new object, or use a `Dynamic` object type (like the example with `computefunc` above). 
 
 ## Constructing from Templates
+
+Syntax:
+```julia
+    (template::Object)([; props...])
+```
 
 Every `Object` instance is a functor, and calling it creates a new `Object` for which it serves as a template. Example:
 ```julia
@@ -270,22 +306,25 @@ obj = Template(a=2.5)
 @show ownpropertynames(obj)
 ```
 
-The new object has exactly the same property names and types as its template; any that are not specified assume default values specified by the template. Attempting to add properties or change their type will result in errors.
+The newly constructed object has exactly the same property names and types as the template; any that are not specified assume default values as specified by the template. Attempting to add properties or change their type will result in errors.
 
-Constructing from a template should be fast, but it currently isn't. I'd like to fix this. Currently, it's an order of magnitude slower than constructing with a proper `struct`, as tested by this:
+For example:
+
 ```julia
-struct Test{T} a::T; b::T end
-@time [Template(a=rand(), b=rand()) for i=1:100_000]
-@time [Test(rand(), rand()) for i=1:100_000]
+obj = Template(a=1)
+@show obj.a                     # 1.0, not 1
+Template(c=1)                   # error
 ```
-Too much memory allocation for some reason.
 
-## Inheritance
+So notice that unlike the other construction techniques, using a template is much more restrictive. Compared with other composition techniques it comes with speed and type stability benefits though.
+
+See bottom for some benchmarking.
+
+## Prototype Inheritance
 
 Syntax:
-
 ```julia
-    Prototype([StorageType,] proto::Object [, args::Pair{Symbol, T} where T...] [; props...])
+    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
 ```
 
 Create an object using `proto` as a prototype. The new object defaults to the same type as its prototype, unless otherwise specified. Think of it like the prototype is picking up new tricks and being repackaged into a new object.
@@ -324,12 +363,12 @@ b.b = 0
 
 ### Multiple Inheritance
 
-Strictly speaking, multiple inheritance isn't implemented. But you can splat objects together to compose a new object.
+Strictly speaking, multiple inheritance isn't implemented. But it's easy to splat objects together to compose a new object that takes traits from multiple objects.
 
 ```julia
 parent = Object(firstname="Jeanette", lastname="Smith", hobby="Fishing")
 friend = Object(hobby="Skiing")
-child  = Prototype(parent, friend..., firstname="Kevin")
+child  = Prototype(parent; friend..., firstname="Kevin")
 
 @show child.firstname, child.lastname, child.hobby    
 # from self, inherited from parent, and adopted from friend
@@ -344,7 +383,7 @@ Changes in `parent.lastname` are reflected in `child`, but changes in `friend.ho
 To create a new independent object with the same properties but breaking the inheritance chain, splat the object:
 
 ```julia
-libertine = Object(child...)    # free Kevin from Jeanette
+libertine = Object(; child...)    # free Kevin from Jeanette
 ```
 
 Try this:
@@ -356,9 +395,9 @@ c = Object(k=5, l=6);
 d = Object(l=7, m=8);
 e = Object(m=9, n=10);
 
-@show x = Prototype(Prototype(Prototype(Prototype(a, b...), c...), d...), e...)
-@show y = Object(a..., b..., c..., d..., e...) # objects splatted later override earlier objects
-@show z = Object(x...)
+@show x = Prototype(Prototype(Prototype(Prototype(a; b...); c...); d...); e...)
+@show y = Object(; a..., b..., c..., d..., e...) # objects splatted later override earlier objects
+@show z = Object(; x...)
 @show Dict(x) == Dict(y)
 ```
 
@@ -383,7 +422,7 @@ Person = Object(
     )
 )
 
-amy = Prototype(Person, Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
+amy = Prototype(Person; Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
 amy.height = 45.5; # Amy has now been born, but is still zero years old
 @show amy
 @show amy.talk()
@@ -396,7 +435,7 @@ Notice how `Person.traits` serves as a placeholder to set default personal value
 Additional note when using `Mutable` and `Static` types: the resulting object type matters because when the object is passed to a function, the function is compiled to that type. When using the same prototype and default traits, the object type is fully consistent (even down to the argument ordering!). This means that functions that have been compiled for one instance, don't have to be recompiled for additional instances.
 
 ```julia
-joe = Prototype(Person, Person.traits..., name="Joe", age=45, siblings=3)
+joe = Prototype(Person; Person.traits..., name="Joe", age=45, siblings=3)
 @show joe.talk()
 @show typeof(joe)
 @show typeof(joe) == typeof(amy)
@@ -442,7 +481,7 @@ The type tag can also be changed.
 
 To change type while *inheriting* traits (i.e., using `a` as a prototype):
 ```julia
-a_neg = Object{:neg}(a())
+a_neg = Object{:neg}(Prototype(a))
 ```
 
 To change type while *copying* traits (i.e., copying `a`'s properties and keeping `a`'s prototype):
@@ -454,7 +493,7 @@ a_neg = Object{:neg}(a)
 To change type while *flattening* traits (i.e., copying `a`'s properties and any from `a`'s prototype):
 
 ```julia
-a_neg = Object{:neg}(a...)
+a_neg = Object{:neg}(; a...)
 ```
 
 When unspecified, the type tag default is `Nothing`.
@@ -469,15 +508,12 @@ traits = Object(age=0, name="", punish = let
     function f(self::Object{:teen}) "scold sternly for $(self.age) seconds" end
     function f(self::Object{:adult}) "express disappointment for $(self.age) years" end
 end)
-tommy = Prototype(Object{:child}(traits), name="tommy", age=5)
-jeff  = Prototype(Object{:adult}(traits), name="jeff", age=25)
+tommy = Prototype(Object{:child}(traits); name="tommy", age=5)
+jeff  = Prototype(Object{:adult}(traits); name="jeff", age=25)
 @show tommy.punish(), jeff.punish()
 ```
 
 ### Method Specialization using Type Hierarchy
-
-# THIS IS BROKEN. RETEST THIS CODE.
-
 
 Type tags, when types are used, can be given hierarchy.
 
@@ -489,9 +525,9 @@ abstract type Dog <: Animal end
 
 # prototypes
 const Prototypes = Object(Dynamic)
-Prototypes.Animal = Object{Animal}(Static, eyes=2, legs=4, size=:large)
-Prototypes.Human = Object{Human}(Prototypes.Animal)(Static, legs=2, artificial_legs=0, size=:medium)
-Prototypes.Dog = Object{Dog}(Prototypes.Animal)(Static, size=:small)
+Prototypes.Animal = Object{Animal}(; eyes=2, legs=4, size=:large)
+Prototypes.Human = Prototype{Human}(Prototypes.Animal; legs=2, artificial_legs=0, size=:medium)
+Prototypes.Dog = Prototype{Dog}(Prototypes.Animal; size=:small)
 
 # defining a method extends naturally to subtypes
 getspeed(animal::Object{<:Animal}) = animal.legs
@@ -502,7 +538,7 @@ let (; Animal, Human, Dog) = Prototypes
     sparky = Dog()          
     @show getspeed(sparky)          # 4
 
-    joe = Human(Dynamic, legs=1);   # lost in a tragic automobile accident
+    joe = Human(legs=1);   # lost in a tragic automobile accident
     @show getspeed(joe)             # 1
 
     joe.artificial_legs = 1         # modern technology
@@ -510,7 +546,7 @@ let (; Animal, Human, Dog) = Prototypes
 end
 ```
 
-Notice that the path for objects to inherit traits (prototype inheritance) is separate from the path of obtaining type hierarchy (type tagging), so there's flexibility for an object to adopt traits from any other type. It's like a coal miner learning how to code.
+Notice that the path for objects to inherit traits (prototype inheritance) is separate from the path of obtaining type hierarchy (type tagging), so there's flexibility for an object to adopt traits from any other type. It's like a coal miner learning how to code, if that's even possible.
 
 ## Interface
 
@@ -539,21 +575,21 @@ g(x) = x.a::Int + 1
 
 When accessing a member method, a closure is returned which captures the object and passes it as a first argument:
 ```julia
-obj = Object(a=1, b=2, f = this -> this.a + this.b)
-somevar = obj.f
+obj = Object(a=1, b=2, h = this -> this.a + this.b)
+somevar = obj.h
 @show somevar()                     # 3
 ```
 
 Same when destructuring an object:
 ```julia
-(; f) = obj
-@show f()                           # 3
+(; h) = obj
+@show h()                           # 3
 ```
 
 But when splatting an object, the original function is given (because we want to be able to splat the function into new objects as a member method)
 ```julia
-Dict(obj...)[:f]()                  # error
-@show Dict(obj...)[:f](obj)         # 3
+Dict(obj...)[:h]()                  # error
+@show Dict(obj...)[:h](obj)         # 3
 ```
 
 ## More
@@ -561,9 +597,9 @@ Dict(obj...)[:f]()                  # error
 The type of an `Object`'s properties, and how they are stored, is encoded in its second type parameter. For example, try this:
 
 ```julia
-@show typeof(Object(Dynamic, a=1, b=2))
-@show typeof(Object(Static,  a=1, b=2))
-@show typeof(Object(Mutable, a=1, b=2))
+@show typeof(Object(Dynamic; a=1, b=2))
+@show typeof(Object(Static;  a=1, b=2))
+@show typeof(Object(Mutable; a=1, b=2))
 ```
 
 If you want to test for objects with specific properties, but disregarding the tag type, you can do something like this:
@@ -585,68 +621,31 @@ This allows you to make different implementations depending on how the `Object` 
 
 How can you filter for `Object`s that store a specific set of parameter names, or with specific types, but disregarding their order or whether they're `Dynamic` or `Static`? It's possible, but unless the type language becomes even more expressive than it already is, is probably a waste of time.
 
-## Insanely More
 
-Let's get crazy with the type system...
-```julia
-abstract type A{V,W,X,Y,Z} end
-abstract type B{V,W,X,Y,Z} <: A{V,W,X,Y,Z} end
-abstract type C{V,W,X,Y,Z} <: B{V,W,X,Y,Z} end
-abstract type D{V,W,X,Y,Z} <: C{V,W,X,Y,Z} end
-abstract type E{V,W,X,Y,Z} <: D{V,W,X,Y,Z} end
-```
-Okay, what can we do? Hmm...
 
-Note that
-```julia
-C{A}{B} == C{A, B}                          # true
-```
-The way this works is, if we set up a condition like
-```julia
-U{V,W,X,Y,Z} <: C{<:C,<:C,<:C,<:C,<:C}
-```
-where `U`,`V`,`X`,`Y`, and `Z` are all separate types in the range of `A` to `E`, then they must all be simultaneously subtypes of `C` (i.e., either `C`, `D`, or `E`) in order for the expression to be true. In other words, the true region is a hyper-rectangle formed by the intersection of these regions.
-
-For example:
+Here's a performance comparison for static objects:
 
 ```julia
-julia> [X{Y} <:C{<:C} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E)]
-5×5 Matrix{Bool}:
- 0  0  0  0  0
- 0  0  0  0  0
- 0  0  1  1  1
- 0  0  1  1  1
- 0  0  1  1  1
-
-#true for these entries:
- C{C}
- D{C}
- E{C}
- C{D}
- D{D}
- E{D}
- C{E}
- D{E}
- E{E}
+using BenchmarkTools
+Template = Object(Static, a=0.0, b=0.0)
+struct Test a::Float64; b::Float64 end
+@btime sum(x->x.a, (Template(a=rand(), b=rand()) for i=1:100_000))                  # 10ms  - Template Construction
+@btime sum(x->x.a, Object(Static; Template..., a=rand(), b=rand()) for i=1:100_000) # 200ms - Splatting Composition
+@btime sum(x->x.a, Object(Static; a=rand(), b=rand()) for i=1:100_000)              # 420μs - No Composition
+@btime sum(x->x.a, (Test(rand(), rand()) for i=1:100_000))                          # 420μs - Specialized Struct
 ```
-You can also run 
+
+Using `Object` here is currently about 20x slower than the `struct`. It's a lot faster than it used to be, but still not where it could be imo. 
+
+Mutable objects have similar performance (try it):
+
 ```julia
-[X{Y{Z}} <:C{<:C{<:C}} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)]
+Template = Object(Mutable, a=0.0, b=0.0)
+mutable struct TestMut a::Float64; b::Float64 end
+@btime sum(x->x.a, (Template(a=rand(), b=rand()) for i=1:100_000))      # 10ms
+@btime sum(x->x.a, Object(; Template..., a=rand(), b=rand()) for i=1:100_000)   # 266ms
+@btime sum(x->x.a, Object(; a=rand(), b=rand()) for i=1:100_000)        # 21ms - remarkably slow atm
+@btime sum(x->x.a, (TestMut(rand(), rand()) for i=1:100_000))           # 600μs
 ```
-to the same effect, namely X, Y, and Z must simultaneously be C, D, or E. Interestingly,
-```julia
-[X{Y{Z}} <:C{<:C{<:C}} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)] ==
-    [X{Y,Z} <:C{<:C,<:C} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)]
-```
-so there's no point telling them apart.
-
-If the LHS has any less TypeVars than the right, then it's always false. If it has more, then the extra typevar doesn't make a difference.
-
-
-ok so now what?
-
-You can gate behavior on the intersection of many simultaneous conditions. Each condition can be:
-
-equality: `
 
 zr

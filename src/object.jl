@@ -1,35 +1,33 @@
 """
-    Object{[TypeTag]}([StorageType,] [args...]; kwargs...)
+    Object{[TypeTag]}([StorageType] [; kwargs...])
 
-Create a structured `Object` with properties specified by pairs `args` or keyword arguments `props`. Object type can be specified by `StorageType`, and additional type parameters can be specified by `TypeTag`. Later properties override earlier ones.
+Create a structured `Object` with properties specified by keyword arguments `kwargs`. Object type can be specified by `StorageType`, and additional type parameters can be specified by `TypeTag`. Later properties override earlier ones.
+
+Other iterable key=>value mappings, as from generators and other `Object`s, can be splatted into the keyword arguments as well.
 
 `StorageType` can be `Static`, `Mutable`, or `Dynamic`, depending on performance needs. If not specified, default is `Mutable`.
 
 `TypeTag` is optional and does not affect `Object` behavior, but can be used to leverage Julia's type inference engine for multiple method dispatch.
 
-    Object{[TypeTag]}([StorageType,] props::AbstractDict)
+    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs...])
 
-Create an `Object` from a dictionary recursively.
+Create an `Object` from a dictionary recursively with optional overriding properties set by `kwargs`.
 
-    Object{[TypeTag]}([StorageType,] obj::Any)
+    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
 
-Create an `Object` from an arbitrary composite type.    
+Create an `Object` from an arbitrary composite type with optional overriding properties set by `kwargs`.
 
-    Object{[TypeTag]}([StorageType,] props::Object)
+    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
 
-Convert an `Object` from one set of `StorageType` and `TypeTag` to another. 
+Convert an `Object` from one set of `StorageType` and `TypeTag` to another, keeping prototype, with optional overriding properties set by `kwargs`. 
 
-    Object{[TypeTag]}([StorageType,] ((obj::Object)...)...; [props...])
+    (proto::Object)([StorageType] [; kwargs...])
 
-Splat and flatten the contents of `obj` to create an independent object with the same properties. Can splat more than one object, with later splatted objects overriding earlier ones. `props` sets instance-specific properties and overrides all.
+Every `Object` is a constructor. Call on the object to use it as a template for creating a new object with the exact same property names and types. Replicating a template is fast and efficient, especially for `Static` and `Mutable` types.
 
-    (proto::Object)([StorageType;] [((obj::Object)...)...]; props...)
+    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
 
-Every `Object` is a constructor. Call on the object to use it as a template for creating a new object with the exact same property names and types.
-
-    Prototype{[TypeTag]}([StorageType,] proto::Object[, args...] [kwargs...])
-
-Create a new object using object `proto` as a prototype.
+Create a new object which references object `proto` as its prototype.
 
     obj.meth = function(self, a, b, c) #=...=# end
     obj.meth(a, b, c)
@@ -44,37 +42,40 @@ struct Object{UserType, StorageType}
     store::StorageType
 end
 
+
+_storeof(obj::Object) = getfield(obj, :store)
+
 # default constructor
 Object{UT}(store::OT) where {UT,OT<:StorageType} = Object{UT,OT}(store)
+Object(store::OT) where {OT<:StorageType} = Object{Nothing,OT}(store)
 
 # constructing from scratch
 # too much copypasta ... fix this up someday like a real programmer
 
 # splatted objects and keyword arguments
-Object{UT}(OT::Type{<:StorageType}, args::Pair...; kwargs...) where {UT} = Object{UT}(OT(nothing, (args...,kwargs...)))
-Object(OT::Type{<:StorageType}, args::Pair...; kwargs...) = Object{Nothing}(OT(nothing, (args...,kwargs...)))
-Object{UT}(args::Pair...; kwargs...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, (args...,kwargs...)))
-Object(args::Pair...; kwargs...) = Object{Nothing}(args...; kwargs...)
+Object{UT}(OT::Type{<:StorageType}; kwargs...) where {UT} = Object{UT}(OT(nothing, kwargs))
+Object(OT::Type{<:StorageType}; kwargs...) = Object{Nothing}(OT(nothing, kwargs))
+Object{UT}(; kwargs...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, kwargs))
+Object(; kwargs...) = Object{Nothing}(; kwargs...)
 
 # recursive dict expansion
-Object{UT}(OT::Type{<:StorageType}, dict::AbstractDict, args::Pair...; kwargs...) where {UT} = 
-    Object{UT}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)...,args...,kwargs...)))
-Object(OT::Type{<:StorageType}, dict::AbstractDict, args::Pair...; kwargs...) = 
-    Object{Nothing}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)...,args...,kwargs...)))
-Object{UT}(dict::AbstractDict, args::Pair...; kwargs...) where {UT} =
-    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)...,args...,kwargs...)))
-Object(dict::AbstractDict, args::Pair...; kwargs...) = Object{Nothing}(dict, args...; kwargs...)
+Object{UT}(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) where {UT} = 
+    Object{UT}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)...,kwargs...)))
+Object(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) = 
+    Object{Nothing}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)...,kwargs...)))
+Object{UT}(dict::AbstractDict; kwargs...) where {UT} =
+    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)...,kwargs...)))
+Object(dict::AbstractDict; kwargs...) = Object{Nothing}(dict; kwargs...)
 
 # user-custom composite types
-Object{UT}(OT::Type{<:StorageType}, obj, args::Pair...; kwargs...) where {UT} = 
-    Object{UT}(OT(nothing, ((k => getproperty(obj,k) for k ∈ propertynames(obj))...,args...,kwargs...)))
-Object(OT::Type{<:StorageType}, obj, args::Pair...; kwargs...) =
-    Object{Nothing}(OT, obj, args...; kwargs...)
-Object{UT}(obj, args::Pair...; kwargs...) where {UT} = 
-    Object{UT}(DEFAULT_OBJECT_TYPE, obj, args...; kwargs...)
-Object(obj, args::Pair...; kwargs...) = Object{Nothing}(obj, args...; kwargs...)
+Object{UT}(OT::Type{<:StorageType}, obj; kwargs...) where {UT} = 
+    Object{UT}(OT(nothing, ((k => getproperty(obj,k) for k ∈ propertynames(obj))...,kwargs...)))
+Object(OT::Type{<:StorageType}, obj; kwargs...) =
+    Object{Nothing}(OT, obj; kwargs...)
+Object{UT}(obj; kwargs...) where {UT} = 
+    Object{UT}(DEFAULT_OBJECT_TYPE, obj; kwargs...)
+Object(obj; kwargs...) = Object{Nothing}(obj; kwargs...)
 
-_storeof(obj::Object) = getfield(obj, :store)
 
 # cute utility taken shamelessly from ConstructionBase.jl
 @generated function _constructorof(::Type{T}) where T
@@ -82,24 +83,24 @@ _storeof(obj::Object) = getfield(obj, :store)
 end
 
 # constructing from a template
-@inline (template::Object{UT,OT})(args::Pair...; kwargs...) where {UT,OT} = 
-    try Object{UT,OT}(OT(_storeof(template), args, kwargs)) 
-    catch e; throw("cannot form argument(s) into template for `Dynamic` or `Mutable` Object.") end
+@inline (template::Object{UT,OT})(; kwargs...) where {UT,OT} = 
+    Object{UT,OT}(OT(Val(:template), _storeof(template), kwargs)) 
 
 # object type conversion
-Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object) where UTnew = 
-    Object{UTnew}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
-Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}) where {UT,OT} = 
-    Object{UT}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
-Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = 
-    Object{UTnew}(_constructorof(OT)(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
+Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object; kwargs...) where UTnew = 
+    Object{UTnew}(OTnew(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
+Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}; kwargs...) where {UT,OT} = 
+    Object{UT}(OTnew(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
+Object{UTnew}(obj::Object{UT,OT}; kwargs...) where {UTnew,UT,OT} = 
+    Object{UTnew}(_constructorof(OT)(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
+Object(obj::Object{UT,OT}; kwargs...) where {UT,OT} = Object{UT}(obj; kwargs...)
 Object(obj::Object) = obj
 
 # prototype inheritance
-Prototype{UT}(OT::Type{<:StorageType}, proto::Object, args::Pair...; kwargs...) where {UT} = Object{UT}(OT(proto, (args...,kwargs...)))
-Prototype(OT::Type{<:StorageType}, proto::Object, args::Pair...; kwargs...) = Object{Nothing}(OT(proto, (args...,kwargs...)))
-Prototype{newUT}(proto::Object{UT,OT}, args::Pair...; kwargs...) where {newUT,UT,OT} = Object{newUT}(_constructorof(OT)(proto, (args...,kwargs...)))
-Prototype(proto::Object{UT,OT}, args::Pair...; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(proto, (args...,kwargs...)))
+Prototype{UT}(OT::Type{<:StorageType}, proto::Object; kwargs...) where {UT} = Object{UT}(OT(proto, kwargs))
+Prototype(OT::Type{<:StorageType}, proto::Object; kwargs...) = Object{Nothing}(OT(proto, kwargs))
+Prototype{newUT}(proto::Object{UT,OT}; kwargs...) where {newUT,UT,OT} = Object{newUT}(_constructorof(OT)(proto, kwargs))
+Prototype(proto::Object{UT,OT}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(proto, kwargs))
 
 # interface
 Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is false for nested prototype access
@@ -120,7 +121,7 @@ Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin
     store = _storeof(obj); props = _getprops(store)
     print(io, "Object{",(UT isa Symbol ? ":" : ""), string(UT),", ", string(nameof(OT)), "}(\n    prototype: ", 
         replace(string(isnothing(_getproto(store)) ? "none" : _getproto(store)), "\n"=>"\n    "), ",\n    properties: ⟨", 
-        replace(join(((v isa Object ? "\n" : "")*"$k = $v" for (k,v) ∈ zip(keys(props), values(props))), ", "), "\n"=>"\n    "), "⟩\n)")
+        replace(join([(v isa Object ? "\n" : "")*"$k = $v" for (k,v) ∈ zip(keys(props), values(props))], ", "), "\n"=>"\n    "), "⟩\n)")
 end
 Base.copy(obj::Object) = begin
     store = _storeof(obj)

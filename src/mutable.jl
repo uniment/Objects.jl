@@ -7,18 +7,20 @@ end
 
 # Constructors
 Mutable(prototype::PrototypeTypes, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) = 
-    Mutable(prototype, NamedTuple(k=>Ref(v) for (k,v) ∈ properties))
-Mutable(prototype::PrototypeTypes, properties::NamedTuple) =
-    Mutable(prototype, NamedTuple(k=>Ref(v) for (k,v) ∈ zip(keys(properties), values(properties))))
+    Mutable(prototype, NamedTuple(properties))
+Mutable(prototype::PrototypeTypes, properties::NamedTuple{K,V}) where {K,V} =
+    Mutable(prototype, NamedTuple{K}(map(k -> Ref(properties[k]), keys(properties))))
 
 # to handle template construction
-Mutable{PT,PP}(store::Mutable, args, kwargs) where {PT,PP} = begin
-    newvals = (k=>Ref(v) for (k,v) ∈ (args..., kwargs...))
-    Mutable(_getproto(store), NamedTuple((_ownprops_itr(store)...,newvals...)))
+Mutable{PT,PP}(::Val{:template}, store::Mutable{PT,PP}, kwargs) where {PT,PP} = begin
+    a, b = store.properties, (; kwargs...) # NamedTuples of Ref's and normal vars, but both can be deref'd with []
+    propscopy = PP(map(k -> typeof(a[k])(getfield(k ∈ keys(b) ? b : a, k)[]), keys(a))) # what a wonderful way to learn the benefits of `map`
+    Mutable{PT,PP}(_getproto(store), propscopy)
 end
 
+
 # access
-_getprops(store::Mutable) = NamedTuple((k,v[]) for (k,v) ∈ zip(keys(store.properties), values(store.properties)))
+_getprops(store::Mutable) = (; ((k,v[]) for (k,v) ∈ zip(keys(store.properties), store.properties))...)
 
 Base.getindex(store::Mutable, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s][]

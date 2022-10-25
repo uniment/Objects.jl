@@ -15,14 +15,14 @@ new interface
 
 ```julia
 # constructing from scratch
-    Object{[TypeTag]}([StorageType,] [args::Pair...] [; kwargs...])                              # normal construction
+    Object{[TypeTag]}([StorageType] [; kwargs...])                             # normal construction
 # changing type ("converting")
-    Object{[TypeTag]}([StorageType,] obj::Object[, args::Pair...] [; kwargs...])
-    Object{[TypeTag]}([StorageType,] obj::Any[, args::Pair...] [; kwargs...])                    # taking in arbitrary types
-    Object{[TypeTag]}([StorageType,] props::AbstractDict[, args::Pair...] [; kwargs...])         # recursing through dictionary
+    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])                 # creates new object, preserves prototype
+    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])                    # copies properties of arbitrary types
+    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs...])         # recursing through dictionary
 # constructing from template
-    (template::Object)([args::Pair...] [; props...])                                             # replicate with new values
+    (template::Object)([; kwargs...])                                           # replicate with new values
 # inheritance
-    Prototype{[TypeTag]}([StorageType,] obj::Object[, args::Pair...] [; kwargs...])
+    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
 ```
 
