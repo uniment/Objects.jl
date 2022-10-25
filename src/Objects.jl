@@ -1,17 +1,15 @@
 module Objects
 
-export Object, Dynamic, Mutable, Static, getprototype
+export Object, Prototype, Dynamic, Mutable, Static, getprototype, ownpropertynames, ownproperties
 
-abstract type ObjectType end
+abstract type Prototype{A,B} end
+abstract type StorageType end
 
 # core `Object` type:
 include("object.jl")
 
 # object storage types
-include("dynamic.jl")
-include("mutable.jl")
-include("static.jl")
-include("common.jl")    # common to all types
+include("common.jl") # rename this file one day
 
 DEFAULT_OBJECT_TYPE = Mutable
 

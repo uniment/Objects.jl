@@ -27,7 +27,13 @@ In addition, `Object`s can inherit traits from each other through prototype inhe
 
 Object-specific methods can be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
 
-Three subtypes of `Object` are provided: `Dynamic`, `Static`, and `Mutable`.
+## Why
+
+Because.
+
+## Object Storage Types
+
+Three subtypes of `Object` storage are provided: `Dynamic`, `Static`, and `Mutable`.
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
 - Static: maximum performance—after construction, properties cannot be changed.
@@ -35,17 +41,22 @@ Three subtypes of `Object` are provided: `Dynamic`, `Static`, and `Mutable`.
 
 If left unspecified, the default is `Mutable`. 
 
-## Constructing Objects
-
-Syntax:
+## Interface
 
 ```julia
-    Object{[TypeTag]}([ObjectType,] [args::Pair{Symbol,V} where V...] [; kwargs...])
-    Object{[TypeTag]}([ObjectType,] obj::Any[, args::Pair{Symbol,V} where V...] [; kwargs...]) 
-    Object{[TypeTag]}([ObjectType,] props::AbstractDict)
+# constructing from scratch
+    Object{[TypeTag]}([StorageType,] [args::Pair...] [; kwargs...])
+# changing type ("converting")
+    Object{[TypeTag]}([StorageType,] obj::Object[, args::Pair...] [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Any[, args::Pair...] [; kwargs...])
+    Object{[TypeTag]}([StorageType,] props::AbstractDict[, args::Pair...] [; kwargs...])
+# constructing from template
+    (template::Object)([args::Pair...] [; props...])
+# prototype inheritance
+    Prototype{[TypeTag]}([StorageType,] proto::Object[, args::Pair...] [; kwargs...])
 ```
 
-### Initialize and use `Object`s
+## Constructing Objects
 
 ```julia
 mut = Object(x=1, y=2)          # default type is `Mutable`
@@ -180,12 +191,6 @@ convert(Dict, config)
 
 Syntax:
 
-```julia
-    Object{[TypeTag]}([ObjectType,] obj::Object)
-```
-
-Notice that `obj` is *not* being splatted.
-
 Keep same property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
 
 ```julia
@@ -256,26 +261,43 @@ obj.storedfunc[] = x -> x^3     # error
 
 To change some functions but keep the other properties and methods, either use splatting or inheritance, or use a `Dynamic` object type (like the example with `computefunc` above). 
 
+## Constructing from Templates
+
+Every `Object` instance is a functor, and calling it creates a new `Object` for which it serves as a template. Example:
+```julia
+Template = Object(Static, a=0.0, b=0.0)
+obj = Template(a=2.5)
+@show ownpropertynames(obj)
+```
+
+The new object has exactly the same property names and types as its template; any that are not specified assume default values specified by the template. Attempting to add properties or change their type will result in errors.
+
+Constructing from a template should be fast, but it currently isn't. I'd like to fix this. Currently, it's an order of magnitude slower than constructing with a proper `struct`, as tested by this:
+```julia
+struct Test{T} a::T; b::T end
+@time [Template(a=rand(), b=rand()) for i=1:100_000]
+@time [Test(rand(), rand()) for i=1:100_000]
+```
+Too much memory allocation for some reason.
+
 ## Inheritance
 
 Syntax:
 
 ```julia
-    (proto::Object)([ObjectType,] [args::Pair{Symbol, T} where T...] [; props...])
+    Prototype([StorageType,] proto::Object [, args::Pair{Symbol, T} where T...] [; props...])
 ```
 
-Every `Object` instance is a functor, and calling it creates a new `Object` for which it is a prototype. Extra keyword arguments specify the new object's own properties. Alternatively, splat in another object(s), generator(s), or dictionary(s).
-
-The new object has the same type as its prototype, unless otherwise specified. Think of it like the prototype is picking up new tricks and being repackaged into a new object.
+Create an object using `proto` as a prototype. The new object defaults to the same type as its prototype, unless otherwise specified. Think of it like the prototype is picking up new tricks and being repackaged into a new object.
 
 ```julia
 obj = Object(a=1, b=2)              # original object
 @show obj.a, obj.b                  # (1, 2)
-newObj = obj(b=3, c=4)              # newObj inherits a and b, and overrides b
+newObj = Prototype(obj, b=3, c=4)   # newObj inherits a and b, and overrides b
 @show newObj.a, newObj.b, newObj.c  # (1, 3, 4)
 obj.a, obj.b = 2, 1                 # change in obj.a passes through to newObj, obj.b does not
 @show newObj.a, newObj.b, newObj.c  # (2, 3, 4)
-newNewObj = newObj(c=5, d=6)
+newNewObj = Prototype(newObj, c=5, d=6)
 @show [newNewObj[s] for s ∈ (:a,:b,:c,:d)]    # [2, 3, 5, 6]
 ```
 
@@ -290,8 +312,8 @@ Because prototypes are inherited by storing a reference, it is possible to build
 You can make an object which is *somewhat* static, and *somewhat* mutable, using inheritance:
 ```julia
 a = Object(Static, a=1)
-b = a(Mutable, b=2)
-c = b(Static, c=3)
+b = Prototype(Mutable, a, b=2)
+c = Prototype(Static, b, c=3)
 @show (c...,)
 ```
 Object `c` has three accessible properties: `c.a`, `c.b`, and `c.c`. Among these, only `c.b` is mutable by changing `b.b`.
@@ -307,7 +329,7 @@ Strictly speaking, multiple inheritance isn't implemented. But you can splat obj
 ```julia
 parent = Object(firstname="Jeanette", lastname="Smith", hobby="Fishing")
 friend = Object(hobby="Skiing")
-child  = parent(friend..., firstname="Kevin")
+child  = Prototype(parent, friend..., firstname="Kevin")
 
 @show child.firstname, child.lastname, child.hobby    
 # from self, inherited from parent, and adopted from friend
@@ -334,7 +356,7 @@ c = Object(k=5, l=6);
 d = Object(l=7, m=8);
 e = Object(m=9, n=10);
 
-@show x = a(b...)(c...)(d...)(e...)
+@show x = Prototype(Prototype(Prototype(Prototype(a, b...), c...), d...), e...)
 @show y = Object(a..., b..., c..., d..., e...) # objects splatted later override earlier objects
 @show z = Object(x...)
 @show Dict(x) == Dict(y)
@@ -361,7 +383,7 @@ Person = Object(
     )
 )
 
-amy = Person(Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
+amy = Prototype(Person, Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
 amy.height = 45.5; # Amy has now been born, but is still zero years old
 @show amy
 @show amy.talk()
@@ -374,7 +396,7 @@ Notice how `Person.traits` serves as a placeholder to set default personal value
 Additional note when using `Mutable` and `Static` types: the resulting object type matters because when the object is passed to a function, the function is compiled to that type. When using the same prototype and default traits, the object type is fully consistent (even down to the argument ordering!). This means that functions that have been compiled for one instance, don't have to be recompiled for additional instances.
 
 ```julia
-joe = Person(Person.traits..., name="Joe", age=45, siblings=3)
+joe = Prototype(Person, Person.traits..., name="Joe", age=45, siblings=3)
 @show joe.talk()
 @show typeof(joe)
 @show typeof(joe) == typeof(amy)
@@ -413,7 +435,7 @@ g(obj::Object{:neg}) = -obj.x^2
 This type tag is automatically inherited.
 
 ```julia
-@show g(a(x=2)), g(b(x=2))      # (4, -4)
+@show g(Prototype(a,x=2)), g(Prototype(b,x=2))      # (4, -4)
 ```
 
 The type tag can also be changed.
@@ -447,12 +469,15 @@ traits = Object(age=0, name="", punish = let
     function f(self::Object{:teen}) "scold sternly for $(self.age) seconds" end
     function f(self::Object{:adult}) "express disappointment for $(self.age) years" end
 end)
-tommy = Object{:child}(traits)(name="tommy", age=5)
-jeff  = Object{:adult}(traits)(name="jeff", age=25)
+tommy = Prototype(Object{:child}(traits), name="tommy", age=5)
+jeff  = Prototype(Object{:adult}(traits), name="jeff", age=25)
 @show tommy.punish(), jeff.punish()
 ```
 
 ### Method Specialization using Type Hierarchy
+
+# THIS IS BROKEN. RETEST THIS CODE.
+
 
 Type tags, when types are used, can be given hierarchy.
 
@@ -559,5 +584,69 @@ obj2 isa Object{<:Any, <:Dynamic}   # false
 This allows you to make different implementations depending on how the `Object` is represented internally. I don't know why you would want to, but you can.
 
 How can you filter for `Object`s that store a specific set of parameter names, or with specific types, but disregarding their order or whether they're `Dynamic` or `Static`? It's possible, but unless the type language becomes even more expressive than it already is, is probably a waste of time.
+
+## Insanely More
+
+Let's get crazy with the type system...
+```julia
+abstract type A{V,W,X,Y,Z} end
+abstract type B{V,W,X,Y,Z} <: A{V,W,X,Y,Z} end
+abstract type C{V,W,X,Y,Z} <: B{V,W,X,Y,Z} end
+abstract type D{V,W,X,Y,Z} <: C{V,W,X,Y,Z} end
+abstract type E{V,W,X,Y,Z} <: D{V,W,X,Y,Z} end
+```
+Okay, what can we do? Hmm...
+
+Note that
+```julia
+C{A}{B} == C{A, B}                          # true
+```
+The way this works is, if we set up a condition like
+```julia
+U{V,W,X,Y,Z} <: C{<:C,<:C,<:C,<:C,<:C}
+```
+where `U`,`V`,`X`,`Y`, and `Z` are all separate types in the range of `A` to `E`, then they must all be simultaneously subtypes of `C` (i.e., either `C`, `D`, or `E`) in order for the expression to be true. In other words, the true region is a hyper-rectangle formed by the intersection of these regions.
+
+For example:
+
+```julia
+julia> [X{Y} <:C{<:C} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E)]
+5×5 Matrix{Bool}:
+ 0  0  0  0  0
+ 0  0  0  0  0
+ 0  0  1  1  1
+ 0  0  1  1  1
+ 0  0  1  1  1
+
+#true for these entries:
+ C{C}
+ D{C}
+ E{C}
+ C{D}
+ D{D}
+ E{D}
+ C{E}
+ D{E}
+ E{E}
+```
+You can also run 
+```julia
+[X{Y{Z}} <:C{<:C{<:C}} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)]
+```
+to the same effect, namely X, Y, and Z must simultaneously be C, D, or E. Interestingly,
+```julia
+[X{Y{Z}} <:C{<:C{<:C}} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)] ==
+    [X{Y,Z} <:C{<:C,<:C} for X ∈ (A, B, C, D, E), Y ∈ (A, B, C, D, E), Z ∈ (A, B, C, D, E)]
+```
+so there's no point telling them apart.
+
+If the LHS has any less TypeVars than the right, then it's always false. If it has more, then the extra typevar doesn't make a difference.
+
+
+ok so now what?
+
+You can gate behavior on the intersection of many simultaneous conditions. Each condition can be:
+
+equality: `
 
 zr

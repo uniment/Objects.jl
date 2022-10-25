@@ -1,18 +1,24 @@
-const ProtoType = Union{Object, Nothing}
+const PrototypeTypes = Union{Object, Nothing}
 
-struct Mutable{PT<:ProtoType, PP<:NamedTuple{S,<:NTuple{N,Base.RefValue}} where {S,N}} <: ObjectType
+struct Mutable{PT<:PrototypeTypes, PP<:NamedTuple{S,<:NTuple{N,Base.RefValue}} where {S,N}} <: StorageType
     prototype::PT
     properties::PP
 end
 
 # Constructors
-Mutable(prototype::ProtoType, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) = 
+Mutable(prototype::PrototypeTypes, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) = 
     Mutable(prototype, NamedTuple(k=>Ref(v) for (k,v) ∈ properties))
-Mutable(prototype::ProtoType, properties::NamedTuple) =
+Mutable(prototype::PrototypeTypes, properties::NamedTuple) =
     Mutable(prototype, NamedTuple(k=>Ref(v) for (k,v) ∈ zip(keys(properties), values(properties))))
 
+# to handle template construction
+Mutable{PT,PP}(store::Mutable, args, kwargs) where {PT,PP} = begin
+    newvals = (k=>Ref(v) for (k,v) ∈ (args..., kwargs...))
+    Mutable(_getproto(store), NamedTuple((_ownprops_itr(store)...,newvals...)))
+end
+
 # access
-getprops(store::Mutable) = NamedTuple((k,v[]) for (k,v) ∈ zip(keys(store.properties), values(store.properties)))
+_getprops(store::Mutable) = NamedTuple((k,v[]) for (k,v) ∈ zip(keys(store.properties), values(store.properties)))
 
 Base.getindex(store::Mutable, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s][]
