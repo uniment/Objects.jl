@@ -5,7 +5,7 @@
 - Use an ordered dict for Dynamic type?
 - Idea: use the Dynamic, Static, and Mutable names as alternatives to Object(Dynamic, ...), Object(Static, ...) and Object(Mutable,...) respectively
 - Another idea: allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly.
-
+- Check out other methods that JavaScript has and consider implementing them https://www.tektutorialshub.com/javascript/hasownproperty-in-javascript/
 
 
 Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameof(OT))".
@@ -14,26 +14,12 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 
 # Things to do
 
-- Make Tests
+- Make object splatting run faster!!!
+- Check template constructor: way to make error when adding an invalid property without sacrificing runtime?
+- Try to see if I can get strict template constructor `typeof(Template)(;kwargs...)` to run faster. (lines 91 and 92 of objects.jl)
 - Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
 - Clean up dynamic/static/mutable constructors after removing args::Pair...
-- Try to see if I can get strict template constructor `typeof(Template)(;kwargs...)` to run faster. (lines 91 and 92 of objects.jl)
-
-## Setting params by Strings and numbers
-
-currently can access not just by symbol, but by string and number
-```julia
-obj = Object(a=1, b=2)
-obj["a"]
-```
-
-but cannot set by string or number
-```julia
-obj = Object("a"=>1) # fail
-```
-
-Should this be made more consistent?
-
+- Make Tests
 
 
 Do something with this sjit:
@@ -100,4 +86,4 @@ ok so now what?
 
 You can gate behavior on the intersection of many simultaneous conditions. Each condition can be:
 
-equality: `
+equality: 

@@ -41,7 +41,7 @@ Three subtypes of `Object` storage are provided: `Dynamic`, `Static`, and `Mutab
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
 - Static: maximum performance—after construction, properties cannot be changed.
-- Mutable: happy medium—properties can be changed at any time, but they cannot be added and their types cannot change.
+- Mutable: happy medium—properties can be changed at any time, but their types cannot change and new ones cannot be added.
 
 If left unspecified, the default is `Mutable`. 
 
@@ -326,31 +326,49 @@ To change some functions but keep the other properties and methods, either use s
 
 ## Constructing from Templates
 
+Ultimately, the role that a `struct` serves is to define a specific structure for how data is to be organized, and to make sure both human and compiler know it---not just for code consistency, but so that specialized methods can be generated. With these `Object`s, that role is served by *templates*.
+
 Syntax:
 ```julia
     (template::Object)([; props...])
 ```
 
 Every `Object` instance is a functor, and calling it creates a new `Object` for which it serves as a template. Example:
+
 ```julia
-Template = Object(Static; a=0.0, b=0.0)
-obj = Template(a=2.5)
+Template = Object(a=0, b=0.0)
+obj = Template(a=2)
 @show ownpropertynames(obj)
 ```
 
-The newly constructed object has exactly the same property names and types as the template; any that are not specified assume default values as specified by the template. Attempting to add properties or change their type will result in errors.
+The newly constructed object has exactly the same type, and the same property names and property types, as the template; any properties that are not specified assume default values as specified by the template. Attempting to add properties or change their type will result in errors.
 
 For example:
 
 ```julia
-obj = Template(a=1)
-@show obj.a                     # 1.0, not 1
-Template(c=1)                   # error
+obj = Template(b=1)
+@show obj.b                     # 1.0, not 1
+Template(a=2.5)                 # error, can't convert to Int
+Template(c=1)                   # should throw an error but currently just ignores extra argument
 ```
 
-So notice that unlike the other construction techniques, using a template is much more restrictive. Compared with other composition techniques it comes with speed and type stability benefits though.
+So notice that unlike the other construction techniques, using a template is much more restrictive. Unlike composition techniques, it comes with speed and type stability benefits.
 
 See bottom for some benchmarking.
+
+### Direct Template Construction
+
+The above technique uses the template to set default values; when calling the template, any values that have not been specified in the call will assume those of the template. The role of the template is then twofold: a) strictly define the names and types of variables, and b) set default values. Also, values can be specified out-of-order from the original template definition (e.g., `(a=1, b=2)` and `(b=2, a=1)` work similarly)
+
+There are times when you only want the template for the strictness, and you don't need to load any default values from it. In this case, this can be used:
+```julia
+typeof(Template)(a=5, b=6.0)
+```
+note that argument ordering must be exactly the same as was used for the template, and variable types must be exactly the same (not just convertible).
+
+In theory this construction method should be the most efficient, but unfortunately it's not working that way right now. I'm still troubleshooting this; check back later.
+
+
 
 ## Prototype Inheritance
 
@@ -663,14 +681,14 @@ Static objects:
 using BenchmarkTools
 struct TestStatic a::Float64; b::Int; c::Char end
 Template = Object(Static, a=0.0, b=0, c='a')
-# constructing by splatting: 24.579 ms (699491 allocations: 36.99 MiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# template construction: 692.100 μs (29491 allocations: 1007.69 KiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Template(a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# construction from scratch: 329.600 μs (19491 allocations: 695.19 KiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# basic struct: 105.500 μs (2 allocations: 234.42 KiB)
-@btime begin objs=Vector{TestStatic}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = TestStatic(rand(), rand(1:10), rand('a':'z')) end end
+# constructing by splatting: 24.487 ms (690004 allocations: 36.85 MiB)
+@btime begin [Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# template construction: 519.800 μs (20004 allocations: 859.47 KiB)
+@btime begin [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# construction from scratch: 151.500 μs (2 allocations: 234.42 KiB)
+@btime begin [Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# basic struct: 146.700 μs (2 allocations: 234.42 KiB)
+@btime begin [TestStatic(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
 ```
 
 Mutable objects have almost identical performance:
@@ -678,15 +696,16 @@ Mutable objects have almost identical performance:
 ```julia
 mutable struct TestMutable a::Float64; b::Int; c::Char end
 Template = Object(Mutable, a=0.0, b=0, c='a')
-# constructing by splatting: 24.852 ms (719491 allocations: 37.30 MiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# template construction: 791.700 μs (59491 allocations: 1.44 MiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Template(a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# construction from scratch: 408.300 μs (49491 allocations: 1.14 MiB)
-@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) end end
-# basic struct: 133.900 μs (10002 allocations: 390.67 KiB)
-@btime begin objs=Vector{TestMutable}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = TestMutable(rand(), rand(1:10), rand('a':'z')) end end
+# constructing by splatting: 24.262 ms (710004 allocations: 37.16 MiB)
+@btime begin [Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# template construction: 642.900 μs (50004 allocations: 1.30 MiB)
+@btime begin [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# construction from scratch: 225.900 μs (30002 allocations: 703.17 KiB)
+@btime begin [Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# basic struct: 172.400 μs (10002 allocations: 390.67 KiB)
+@btime begin [TestMutable(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
 ```
 
+Hm. Why is splatting so damn slow? Let's fix that.
 
 zr
