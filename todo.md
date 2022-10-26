@@ -1,13 +1,10 @@
-# Things to do
+# Ideas to explore
 
-Is there a way to construct objects off of a *template*? To use the template as a faster constructor?
 
-Syntax:
-
-```julia
-    Object(template::Object; kwargs...)
-```
-
+- when `Object`ifying arbitrary objects, can we access their base address?
+- Use an ordered dict for Dynamic type?
+- Idea: use the Dynamic, Static, and Mutable names as alternatives to Object(Dynamic, ...), Object(Static, ...) and Object(Mutable,...) respectively
+- Another idea: allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly.
 
 
 
@@ -15,13 +12,12 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 
 
 
-
+# Things to do
 
 - Make Tests
 - Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
-- when `Object`ifying arbitrary objects, can we access their base address?
-- Use an ordered dict for Dynamic type?
 - Clean up dynamic/static/mutable constructors after removing args::Pair...
+
 
 ## Strings and numbers
 

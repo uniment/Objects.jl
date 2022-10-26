@@ -124,7 +124,7 @@ obj = Object(
 @show obj.b.c                   # "Hello!"
 ```
 
-### Splatting Dictionaries, Generators, and Objects
+### Composing objects by splatting dictionaries, generators, and other objects
 
 Iterable collections should be splatted into keyword arguments. Later arguments override earlier ones.
 
@@ -235,6 +235,27 @@ locked = Object(Static, dyno)   # Create `Static` from `Dynamic`
 obj = Object(x=1, y=2, z=3)
 let (; x, y) = obj
     @show x + y
+end
+```
+
+## Iterating over Objects
+
+We already saw splatting
+
+```julia
+(obj...,)
+```
+
+This splats into a tuple of (key => value) pairs. You can also splat into a NamedTuple:
+
+```julia
+(; obj...)
+```
+
+You can also loop by key and value
+```julia
+for (k,v) ∈ obj
+    println("key $k corresponds to value $v")
 end
 ```
 
