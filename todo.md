@@ -17,9 +17,9 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 - Make Tests
 - Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
 - Clean up dynamic/static/mutable constructors after removing args::Pair...
+- Try to see if I can get strict template constructor `typeof(Template)(;kwargs...)` to run faster. (lines 91 and 92 of objects.jl)
 
-
-## Strings and numbers
+## Setting params by Strings and numbers
 
 currently can access not just by symbol, but by string and number
 ```julia

@@ -45,7 +45,7 @@ end
 
 _storeof(obj::Object) = getfield(obj, :store)
 
-# default constructor
+# default constructors
 Object{UT}(store::OT) where {UT,OT<:StorageType} = Object{UT,OT}(store)
 Object(store::OT) where {OT<:StorageType} = Object{Nothing,OT}(store)
 
@@ -85,6 +85,11 @@ end
 # constructing from a template
 (template::Object{UT,OT})(; kwargs...) where {UT,OT} = 
     Object{UT,OT}(OT(Val(:template), _storeof(template); kwargs...)) 
+
+# test feature: call typeof(obj)(; kwargs...) and see if this is a faster constructor
+# currently this is slower for some reason; fix it someday.
+Object{UT,OT}(proto::Union{Object,Nothing}; kwargs...) where {UT,OT} = Object{UT,OT}(_constructorof(OT)(proto, kwargs))
+Object{UT,OT}(; kwargs...) where {UT,OT} = Object{UT,OT}(nothing; kwargs...)
 
 # object type conversion
 Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object; kwargs...) where UTnew = 

@@ -128,6 +128,8 @@ obj = Object(
 
 Iterable collections should be splatted into keyword arguments. Later arguments override earlier ones.
 
+Remember to put `;` before the splatted object to ensure it splats into keyword arguments, not regular arguments. (note 1)
+
 Dictionaries:
 
 ```julia
@@ -146,11 +148,18 @@ Other `Object`s:
 ```julia
 obj = Object(a=1, b=2)
 newObj = Object(; obj...)
-@show (obj...,) == (newObj...,) # true
+@show (; obj...) == (; newObj...) # true
 @show obj == newObj             # false
 @show Dict(obj...)              # splat `obj` into a dictionary (as regular args, not keyword)
 ```
 
+note 1: Splatting into keyword arguments keeps the names as part of the argument type, allowing the function to specialize on type and be type-stable. To see what I mean, run this: 
+
+```julia
+((ar...; kwar...)->(ar, kwar))(:a=>1, :b=>2; c=3, d=4) .|> x->println(typeof(x))
+``` 
+
+and look for `:c` and `:d`. As a result, I only allow splatting into the keyword arguments of `Object`. This is unlike `Dict`s, which remain type stable even if the key names change; the type of an `Object` should change if its property names change so that methods can specialize on the object type.
 
 ### Modeling Objects off Arbitrary Composite Types
 
@@ -183,7 +192,7 @@ You can add and override parameters by splatting in more or with keyword argumen
 
 ```julia
 obj3 = Object(test1; Dict(:b=>'🐢')..., c='🐢')
-@show (obj3...,)                # turtles all the way down
+@show (; obj3...)                # turtles all the way down
 ```
 
 `Object`ifying arbitrary composite types is not recursive, for hopefully obvious reasons.
@@ -243,13 +252,13 @@ end
 We already saw splatting
 
 ```julia
-(obj...,)
+(; obj...)
 ```
 
-This splats into a tuple of (key => value) pairs. You can also splat into a NamedTuple:
+This splats into a NamedTuple. You can also splat into a tuple of (key => value) pairs:
 
 ```julia
-(; obj...)
+(obj...,)
 ```
 
 You can also loop by key and value
@@ -279,7 +288,9 @@ Implementation-wise, accessing `obj.compute` yields a closure which captures `ob
 Use the `let` keyword to create local scope to define the flavors of a function, and make it a property of the object. Outside that local scope, the name given to the polymorphic function is invalid.
 
 ```julia
-obj = Object(a=1, b=2, 
+obj = Object(;
+    a=1, 
+    b=2, 
     func = let
         function f(self) self.a + self.b end
         function f(self, x::Int) self.a + x end
@@ -322,7 +333,7 @@ Syntax:
 
 Every `Object` instance is a functor, and calling it creates a new `Object` for which it serves as a template. Example:
 ```julia
-Template = Object(Static, a=0.0, b=0.0)
+Template = Object(Static; a=0.0, b=0.0)
 obj = Template(a=2.5)
 @show ownpropertynames(obj)
 ```
@@ -374,12 +385,12 @@ You can make an object which is *somewhat* static, and *somewhat* mutable, using
 a = Object(Static, a=1)
 b = Prototype(Mutable, a, b=2)
 c = Prototype(Static, b, c=3)
-@show (c...,)
+@show (; c...)
 ```
 Object `c` has three accessible properties: `c.a`, `c.b`, and `c.c`. Among these, only `c.b` is mutable by changing `b.b`.
 ```julia
 b.b = 0
-@show (c...,)
+@show (; c...)
 ```
 
 ### Multiple Inheritance
@@ -435,7 +446,7 @@ Person = Object(
     arms=2, 
     legs=2, 
     talk=function(self) self.age > 5 ? :loud : :quiet end,
-    traits = Object(Static, 
+    traits = Object(Static; 
         age=0,      # years
         height=0.0, # centimeters
         siblings=0, # 
@@ -601,13 +612,15 @@ somevar = obj.h
 @show somevar()                     # 3
 ```
 
-Same when destructuring an object:
+Same when accessing it by index, or when destructuring an object:
 ```julia
+@show obj[:h]()                     # 3
 (; h) = obj
 @show h()                           # 3
 ```
 
-But when splatting an object, the original function is given (because we want to be able to splat the function into new objects as a member method)
+But when iterating over the object, such as by splatting or looping by (key,value), the original function is given (because we want to be able to splat the function into new objects as a member method)
+
 ```julia
 Dict(obj...)[:h]()                  # error
 @show Dict(obj...)[:h](obj)         # 3
