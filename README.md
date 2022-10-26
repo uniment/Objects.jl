@@ -37,7 +37,7 @@ It's also just fun. Nobody likes `ERROR: invalid redefinition of constant MyStru
 
 ## Object Storage Types
 
-Three subtypes of `Object` storage are provided: `Dynamic`, `Static`, and `Mutable`.
+Three subtypes of `Object` storage are provided: `Dynamic`, `Static`, and `Mutable`. Their behaviors are identical, except for property-setting flexibility and performance.
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
 - Static: maximum performance—after construction, properties cannot be changed.
@@ -621,31 +621,38 @@ This allows you to make different implementations depending on how the `Object` 
 
 How can you filter for `Object`s that store a specific set of parameter names, or with specific types, but disregarding their order or whether they're `Dynamic` or `Static`? It's possible, but unless the type language becomes even more expressive than it already is, is probably a waste of time.
 
+## some benchmarking
 
-
-Here's a performance comparison for static objects:
+Static objects:
 
 ```julia
 using BenchmarkTools
-Template = Object(Static, a=0.0, b=0.0)
-struct Test a::Float64; b::Float64 end
-@btime sum(x->x.a, (Template(a=rand(), b=rand()) for i=1:100_000))                  # 10ms  - Template Construction
-@btime sum(x->x.a, Object(Static; Template..., a=rand(), b=rand()) for i=1:100_000) # 200ms - Splatting Composition
-@btime sum(x->x.a, Object(Static; a=rand(), b=rand()) for i=1:100_000)              # 420μs - No Composition
-@btime sum(x->x.a, (Test(rand(), rand()) for i=1:100_000))                          # 420μs - Specialized Struct
+struct TestStatic a::Float64; b::Int; c::Char end
+Template = Object(Static, a=0.0, b=0, c='a')
+# constructing by splatting: 24.579 ms (699491 allocations: 36.99 MiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# template construction: 692.100 μs (29491 allocations: 1007.69 KiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Template(a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# construction from scratch: 329.600 μs (19491 allocations: 695.19 KiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# basic struct: 105.500 μs (2 allocations: 234.42 KiB)
+@btime begin objs=Vector{TestStatic}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = TestStatic(rand(), rand(1:10), rand('a':'z')) end end
 ```
 
-Using `Object` here is currently about 20x slower than the `struct`. It's a lot faster than it used to be, but still not where it could be imo. 
-
-Mutable objects have similar performance (try it):
+Mutable objects have almost identical performance:
 
 ```julia
-Template = Object(Mutable, a=0.0, b=0.0)
-mutable struct TestMut a::Float64; b::Float64 end
-@btime sum(x->x.a, (Template(a=rand(), b=rand()) for i=1:100_000))      # 10ms
-@btime sum(x->x.a, Object(; Template..., a=rand(), b=rand()) for i=1:100_000)   # 266ms
-@btime sum(x->x.a, Object(; a=rand(), b=rand()) for i=1:100_000)        # 21ms - remarkably slow atm
-@btime sum(x->x.a, (TestMut(rand(), rand()) for i=1:100_000))           # 600μs
+mutable struct TestMutable a::Float64; b::Int; c::Char end
+Template = Object(Mutable, a=0.0, b=0, c='a')
+# constructing by splatting: 24.852 ms (719491 allocations: 37.30 MiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# template construction: 791.700 μs (59491 allocations: 1.44 MiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Template(a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# construction from scratch: 408.300 μs (49491 allocations: 1.14 MiB)
+@btime begin objs=Vector{typeof(Template)}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) end end
+# basic struct: 133.900 μs (10002 allocations: 390.67 KiB)
+@btime begin objs=Vector{TestMutable}(undef, 10_000); for i ∈ eachindex(objs) objs[i] = TestMutable(rand(), rand(1:10), rand('a':'z')) end end
 ```
+
 
 zr

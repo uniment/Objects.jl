@@ -11,7 +11,7 @@ include("object.jl")
 # object storage types
 include("common.jl") # rename this file one day
 
-DEFAULT_OBJECT_TYPE = Mutable
+const DEFAULT_STORAGE_TYPE = Mutable
 
 end
 #zr

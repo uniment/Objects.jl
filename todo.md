@@ -21,7 +21,6 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 - Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
 - when `Object`ifying arbitrary objects, can we access their base address?
 - Use an ordered dict for Dynamic type?
-- Fix mutable constructor to be faster
 - Clean up dynamic/static/mutable constructors after removing args::Pair...
 
 ## Strings and numbers

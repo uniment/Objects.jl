@@ -11,8 +11,8 @@ Dynamic(prototype::PT, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) wh
 Dynamic(prototype::PrototypeTypes, properties::NamedTuple) =
     Dynamic(prototype, Dict{Symbol,Any}(k=>properties[k] for k ∈ keys(properties)))
 
-# to handle template construction (this approach explicitly forces typechecks on new values for consistency with Static and Mutable Objects)
-Dynamic{PT,PP}(::Val{:template}, store::Dynamic, kwargs) where {PT,PP} = begin
+# to handle template construction (this explicitly forces typechecks for behavioral consistency with Static and Mutable Objects)
+Dynamic{PT,PP}(::Val{:template}, store::Dynamic; kwargs...) where {PT,PP} = begin
     storecopy = Dynamic(_getproto(store), _getprops(store))
     for (k,v) ∈ kwargs    storecopy[k] = convert(typeof(storecopy[k]), v)    end
     storecopy
@@ -20,8 +20,8 @@ end
 
 
 # access
-_getprops(store::Dynamic) = (; ((k,v[]) for (k,v) ∈ store.properties)...) 
-# this crashes:(; zip(zip(store.properties...)...)...)
+_getprops(store::Dynamic) = NamedTuple{Tuple(keys(store.properties))}(values(store.properties))
+
 
 Base.getindex(store::Dynamic, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s]

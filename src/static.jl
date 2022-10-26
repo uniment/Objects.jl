@@ -10,10 +10,10 @@ Static(prototype::PrototypeTypes, properties::Union{Base.Pairs, NTuple{N,Pair} w
     Static(prototype, NamedTuple(properties))
 
 
-    
+
 # to handle template construction
-Static{PT,PP}(::Val{:template}, store::Static, kwargs) where {PT,PP} = begin
-    Static{PT,PP}(_getproto(store), merge(_getprops(store), kwargs))
+Static{PT,PP}(::Val{:template}, store::Static; kwargs...) where {PT,PP} = begin
+    Static{PT,PP}(_getproto(store), PP(getindex(k ∈ keys(kwargs) ? kwargs : _getprops(store), k) for k ∈ keys(_getprops(store))))
 end
 
 
@@ -27,5 +27,5 @@ Base.getindex(store::Static, s::Symbol) = begin
     isnothing(store.prototype) && throw("property $s not found")
     getproperty(store.prototype, s; iscaller=false)
 end
-Base.setindex!(store::Static, v, s::Symbol) = throw("cannot change property $s of a static object")
+Base.setindex!(store::Static, v, s::Symbol) = throw("cannot change property $s of a `Static` object")
 #zr

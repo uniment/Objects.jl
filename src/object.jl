@@ -55,16 +55,16 @@ Object(store::OT) where {OT<:StorageType} = Object{Nothing,OT}(store)
 # splatted objects and keyword arguments
 Object{UT}(OT::Type{<:StorageType}; kwargs...) where {UT} = Object{UT}(OT(nothing, kwargs))
 Object(OT::Type{<:StorageType}; kwargs...) = Object{Nothing}(OT(nothing, kwargs))
-Object{UT}(; kwargs...) where {UT} = Object{UT}(DEFAULT_OBJECT_TYPE(nothing, kwargs))
+Object{UT}(; kwargs...) where {UT} = Object{UT}(DEFAULT_STORAGE_TYPE(nothing, kwargs))
 Object(; kwargs...) = Object{Nothing}(; kwargs...)
 
 # recursive dict expansion
 Object{UT}(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) where {UT} = 
-    Object{UT}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)...,kwargs...)))
+    Object{UT}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)..., kwargs...)))
 Object(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) = 
-    Object{Nothing}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)...,kwargs...)))
+    Object{Nothing}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)..., kwargs...)))
 Object{UT}(dict::AbstractDict; kwargs...) where {UT} =
-    Object{UT}(DEFAULT_OBJECT_TYPE(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)...,kwargs...)))
+    Object{UT}(DEFAULT_STORAGE_TYPE(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)..., kwargs...)))
 Object(dict::AbstractDict; kwargs...) = Object{Nothing}(dict; kwargs...)
 
 # user-custom composite types
@@ -73,7 +73,7 @@ Object{UT}(OT::Type{<:StorageType}, obj; kwargs...) where {UT} =
 Object(OT::Type{<:StorageType}, obj; kwargs...) =
     Object{Nothing}(OT, obj; kwargs...)
 Object{UT}(obj; kwargs...) where {UT} = 
-    Object{UT}(DEFAULT_OBJECT_TYPE, obj; kwargs...)
+    Object{UT}(DEFAULT_STORAGE_TYPE, obj; kwargs...)
 Object(obj; kwargs...) = Object{Nothing}(obj; kwargs...)
 
 
@@ -83,8 +83,8 @@ Object(obj; kwargs...) = Object{Nothing}(obj; kwargs...)
 end
 
 # constructing from a template
-@inline (template::Object{UT,OT})(; kwargs...) where {UT,OT} = 
-    Object{UT,OT}(OT(Val(:template), _storeof(template), kwargs)) 
+(template::Object{UT,OT})(; kwargs...) where {UT,OT} = 
+    Object{UT,OT}(OT(Val(:template), _storeof(template); kwargs...)) 
 
 # object type conversion
 Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object; kwargs...) where UTnew = 
