@@ -23,7 +23,7 @@ using Objects
 
 Instances of `Object` have properties that can be casually and easily created and composed, and then accessed and changed using dot-syntax.
 
-Once an `Object` has been carved into the desired form, it can serve as a "template" for replication, using efficient construction techniques to create clones with the same datatypes but with custom values.
+Once an `Object` has been carved into the desired form, it can serve as a "template" for replication to create clones with the same datatypes but with custom values.
 
 In addition, `Object`s can inherit traits from other `Object`s through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
 
@@ -199,15 +199,6 @@ obj2.a ≠ test2.a
 ```
 Maybe that can be changed one day, that could be cool idk
 
-You can add and override parameters by splatting in more or with keyword arguments:
-
-NO YOU CAN'T: I REMOVED THIS FEATURE.
-
-```julia
-obj3 = Object(test1; Dict(:b=>'🐢')..., c='🐢')
-@show (; obj3...)                # turtles all the way down
-```
-
 `Object`ifying arbitrary composite types is not recursive, for hopefully obvious reasons.
 
 
@@ -231,6 +222,25 @@ convert(Dict, config)
 ```
 
 Note that splatting is not recursive; these are special methods for converting between nested dictionaries and `Object`s.
+
+
+### Composing after
+
+Of course, once something has been converted into an `Object`, it can be splatted to create new objects.
+
+```julia
+composed_config = Object(; config..., username="Why didn't I have a username before?")
+```
+
+You can also select specific items by indexing:
+```julia
+config[(:usertype, :password)]
+```
+
+and you can drop specific items (although this behavior is new and unstable, so don't rely on it yet)
+```julia
+drop(config, :creationdate)
+```
 
 
 ## Copying Object into New Type and Tag
@@ -365,7 +375,12 @@ Template(a=2.5)                 # error, can't convert to Int
 Template(c=1)                   # should throw an error but currently just ignores extra argument
 ```
 
-So notice that unlike the other construction techniques, using a template is much more restrictive. Unlike composition techniques, it comes with massive benefits in speed and type stability.
+For comparison, composition by splatting:
+```julia
+Object(; Template..., a=2.5)    # ok
+```
+
+So notice that unlike the other construction techniques, using a template is much more restrictive. Unlike composition techniques, it forces the properties to have exactly the same types as the template.
 
 See bottom for some benchmarking.
 
@@ -696,14 +711,14 @@ Static objects:
 using BenchmarkTools
 struct TestStatic a::Float64; b::Int; c::Char end
 Template = Object(Static, a=0.0, b=0, c='a')
-# constructing by splatting: 25.528 ms (740006 allocations: 41.28 MiB) <- a lot is from calling propertynames
-@btime let Template=Template; [Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# template construction: 158.800 μs (4 allocations: 234.50 KiB)
-@btime let Template=Template; [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# construction from scratch: 154.100 μs (2 allocations: 234.42 KiB)
-@btime let Template=Template; [Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# basic struct: 151.900 μs (2 allocations: 234.42 KiB)
-@btime let Template=Template; [TestStatic(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
+# constructing by splatting: 14.915 ns (0 allocations: 0 bytes)
+@btime Object(Static; $Template..., a=rand(), b=rand(1:10), c=rand('a':'z'));
+# template construction: 14.900 ns (0 allocations: 0 bytes)
+@btime $Template(a=rand(), b=rand(1:10), c=rand('a':'z'));
+# construction from scratch: 14.830 ns (0 allocations: 0 bytes)
+@btime Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z'));
+# basic struct: 14.915 ns (0 allocations: 0 bytes)
+@btime TestStatic(rand(), rand(1:10), rand('a':'z'));
 ```
 
 Mutable objects have almost identical performance:
@@ -711,20 +726,18 @@ Mutable objects have almost identical performance:
 ```julia
 mutable struct TestMutable a::Float64; b::Int; c::Char end
 Template = Object(Mutable, a=0.0, b=0, c='a')
-# constructing by splatting: 25.499 ms (770006 allocations: 41.73 MiB)
-@btime let Template=Template; [Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# template construction: 231.400 μs (30004 allocations: 703.25 KiB)
-@btime let Template=Template; [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# construction from scratch: 228.000 μs (30002 allocations: 703.17 KiB)
-@btime let Template=Template; [Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# basic struct: 182.500 μs (10002 allocations: 390.67 KiB)
-@btime let Template=Template; [TestMutable(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
+# constructing by splatting: 21.063 ns (3 allocations: 48 bytes)
+@btime Object(Mutable; $Template..., a=rand(), b=rand(1:10), c=rand('a':'z'));
+# template construction: 21.565 ns (3 allocations: 48 bytes)
+@btime $Template(a=rand(), b=rand(1:10), c=rand('a':'z'));
+# construction from scratch: 21.063 ns (3 allocations: 48 bytes)
+@btime Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z'));
+# basic struct: 16.834 ns (1 allocation: 32 bytes)
+@btime TestMutable(rand(), rand(1:10), rand('a':'z'));
 ```
 
 The performance when constructing from a template is maintained even if the arguments are out of order from their original creation (try it).
 
-
-Why is splatting so damn slow? That really needs to be fixed.
 
 
 zr

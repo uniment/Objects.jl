@@ -26,8 +26,11 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 
 
 ## some lessons learned during this project
-- for speed, defer to using generators and iterators instead of specific data structures when possible (to avoid rearranging data)
-- 
+- tracking types to maintain type stability is a challenge but improves performance massively
+- once a variable loses its type stability, the type instability can explode through successive functions until the entire body of code is slow
+-  (think of it like the `missing` datatype, but for data types.)
+- for speed, defer to using generators operating on iterators instead of specific data structures when possible (to avoid rearranging data)
+- instead of `k ∉ keys && do_something()`, use `k ∈ keys || do_something()` (more performant)
 
 
 Do something with this sjit:

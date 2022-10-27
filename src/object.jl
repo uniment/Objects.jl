@@ -102,15 +102,21 @@ Base.getproperty(obj::Object, s::Symbol) = begin
     v
 end
 Base.setproperty!(obj::Object, s::Symbol, v) = (getfield(obj, :store)[s] = v)
-Base.propertynames(obj::Object) = Symbol[keys(getfield(obj, :store))...]
+Base.propertynames(obj::Object) = (keys(getfield(obj, :store))...,)
 
-Base.keys(obj::Object) = keys(getfield(obj, :store))
-Base.values(obj::Object) = values(getfield(obj, :store))
+Base.keys(obj::Object) = (keys(getfield(obj, :store))...,)
+Base.values(obj::Object) = (values(getfield(obj, :store))...,) # if you don't splat first, then sending values(obj) to NamedTuple in merge() is super slow 
 Base.iterate(obj::Object, itr=zip(keys(obj), values(obj))) = Iterators.peel(itr)
+Base.merge(nt::NamedTuple, obj::Object) = (; nt..., NamedTuple{keys(obj)}(values(obj))...)
 
 Base.length(obj::Object) = length(keys(getfield(obj, :store)))
 Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
 Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
+Base.getindex(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {N,UT,OT} =
+    Object{UT}(_constructorof(OT); NamedTuple{n}((; obj...))...)
+drop(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {UT,OT,N} = 
+    Object{UT}(_constructorof(OT); NamedTuple{((k for k ∈ keys(obj) if k ∉ n)...,)}((; obj...))...)
+drop(obj::Object, n::Symbol...) = drop(obj, (n...,))
 Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin
     store = getfield(obj, :store); props = _getprops(store)
     print(io, "Object{",(UT isa Symbol ? ":" : ""), string(UT),", ", string(nameof(OT)), "}(\n    prototype: ", 

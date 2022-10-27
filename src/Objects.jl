@@ -1,6 +1,6 @@
 module Objects
 
-export Object, Prototype, Dynamic, Mutable, Static, getprototype, ownpropertynames, ownproperties
+export Object, Prototype, Dynamic, Mutable, Static, getprototype, ownpropertynames, ownproperties, drop
 
 abstract type StorageType end
 
