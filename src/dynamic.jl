@@ -6,17 +6,18 @@ struct Dynamic{PT<:PrototypeTypes, PP<:Dict{Symbol,Any}} <: StorageType
 end
 
 # Constructors
-Dynamic(prototype::PT, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) where {PT<:PrototypeTypes} =
+Dynamic(prototype::PT, properties::Base.Pairs) where {PT<:PrototypeTypes} =
     Dynamic{PT,Dict{Symbol,Any}}(prototype, Dict{Symbol,Any}(properties))
 Dynamic(prototype::PrototypeTypes, properties::NamedTuple) =
     Dynamic(prototype, Dict{Symbol,Any}(k=>properties[k] for k ∈ keys(properties)))
 
 # to handle template construction (this explicitly forces typechecks for behavioral consistency with Static and Mutable Objects)
-Dynamic{PT,PP}(::Val{:template}, store::Dynamic; kwargs...) where {PT,PP} = begin
+Dynamic{PT,PP}(::Val{:template}, store::Dynamic, kwargs) where {PT,PP} = begin
     storecopy = Dynamic(_getproto(store), _getprops(store))
     for (k,v) ∈ kwargs    storecopy[k] = convert(typeof(storecopy[k]), v)    end
     storecopy
 end
+
 
 
 # access

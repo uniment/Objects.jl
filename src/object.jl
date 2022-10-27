@@ -25,9 +25,9 @@ Convert an `Object` from one set of `StorageType` and `TypeTag` to another, keep
 
 Every `Object` is a constructor. Call on the object to use it as a template for creating a new object with the exact same property names and types. Replicating a template is fast and efficient, especially for `Static` and `Mutable` types.
 
-    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] (proto::Object,) [; kwargs...])
 
-Create a new object which references object `proto` as its prototype.
+Create a new object which references object `proto` as its prototype. Notice that `proto` has been placed into a single-element Tuple.
 
     obj.meth = function(self, a, b, c) #=...=# end
     obj.meth(a, b, c)
@@ -58,54 +58,44 @@ Object(OT::Type{<:StorageType}; kwargs...) = Object{Nothing}(OT(nothing, kwargs)
 Object{UT}(; kwargs...) where {UT} = Object{UT}(DEFAULT_STORAGE_TYPE(nothing, kwargs))
 Object(; kwargs...) = Object{Nothing}(; kwargs...)
 
-# recursive dict expansion
-Object{UT}(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) where {UT} = 
-    Object{UT}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)..., kwargs...)))
-Object(OT::Type{<:StorageType}, dict::AbstractDict; kwargs...) = 
-    Object{Nothing}(OT(nothing, ((Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)..., kwargs...)))
-Object{UT}(dict::AbstractDict; kwargs...) where {UT} =
-    Object{UT}(DEFAULT_STORAGE_TYPE(nothing, ((Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)..., kwargs...)))
-Object(dict::AbstractDict; kwargs...) = Object{Nothing}(dict; kwargs...)
-
-# user-custom composite types
-Object{UT}(OT::Type{<:StorageType}, obj; kwargs...) where {UT} = 
-    Object{UT}(OT(nothing, ((k => getproperty(obj,k) for k ∈ propertynames(obj))...,kwargs...)))
-Object(OT::Type{<:StorageType}, obj; kwargs...) =
-    Object{Nothing}(OT, obj; kwargs...)
-Object{UT}(obj; kwargs...) where {UT} = 
-    Object{UT}(DEFAULT_STORAGE_TYPE, obj; kwargs...)
-Object(obj; kwargs...) = Object{Nothing}(obj; kwargs...)
-
 
 # cute utility taken shamelessly from ConstructionBase.jl
 @generated function _constructorof(::Type{T}) where T
     getfield(parentmodule(T), nameof(T))
 end
 
-# constructing from a template
-(template::Object{UT,OT})(; kwargs...) where {UT,OT} = 
-    Object{UT,OT}(OT(Val(:template), _storeof(template); kwargs...)) 
+# conversion
+# arbitrary composite types
+Object{UT}(OT::Type{<:StorageType}, obj) where {UT} = Object{UT}(OT(nothing, (; (k => getproperty(obj,k) for k ∈ propertynames(obj))...)))
+Object(OT::Type{<:StorageType}, obj) = Object{Nothing}(OT, obj)
+Object{UT}(obj) where {UT} = Object{UT}(DEFAULT_STORAGE_TYPE, obj)
+Object(obj) = Object{Nothing}(obj)
 
-# test feature: call typeof(obj)(; kwargs...) and see if this is a faster constructor
-# currently this is slower for some reason; fix it someday.
-Object{UT,OT}(proto::Union{Object,Nothing}; kwargs...) where {UT,OT} = Object{UT,OT}(_constructorof(OT)(proto, kwargs))
-Object{UT,OT}(; kwargs...) where {UT,OT} = Object{UT,OT}(nothing; kwargs...)
-
-# object type conversion
-Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object; kwargs...) where UTnew = 
-    Object{UTnew}(OTnew(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
-Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}; kwargs...) where {UT,OT} = 
-    Object{UT}(OTnew(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
-Object{UTnew}(obj::Object{UT,OT}; kwargs...) where {UTnew,UT,OT} = 
-    Object{UTnew}(_constructorof(OT)(_getproto(_storeof(obj)), merge(_getprops(_storeof(obj)), kwargs)))
-Object(obj::Object{UT,OT}; kwargs...) where {UT,OT} = Object{UT}(obj; kwargs...)
+# object type
+Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object) where UTnew = Object{UTnew}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
+Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}) where {UT,OT} = Object{UT}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
+Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = Object{UTnew}(_constructorof(OT)(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
 Object(obj::Object) = obj
 
+# recursive dict expansion
+Object{UT}(OT::Type{<:StorageType}, dict::AbstractDict) where {UT} = 
+    Object{UT}(OT(nothing, (; (Symbol(k) => v isa AbstractDict ? Object{UT}(OT, v) : v for (k,v) ∈ dict)...)))
+Object(OT::Type{<:StorageType}, dict::AbstractDict) = 
+    Object{Nothing}(OT(nothing, (; (Symbol(k) => v isa AbstractDict ? Object(OT, v) : v for (k,v) ∈ dict)...)))
+Object{UT}(dict::AbstractDict) where {UT} =
+    Object{UT}(DEFAULT_STORAGE_TYPE(nothing, (; (Symbol(k) => v isa AbstractDict ? Object{UT}(v) : v for (k,v) ∈ dict)...)))
+Object(dict::AbstractDict) = Object{Nothing}(dict)
+
+
+# code reuse
+# constructing from a template
+(template::Object{UT,OT})(; kwargs...) where {UT,OT} = Object{UT,OT}(OT(Val(:template), _storeof(template), kwargs))
+
 # prototype inheritance
-Prototype{UT}(OT::Type{<:StorageType}, proto::Object; kwargs...) where {UT} = Object{UT}(OT(proto, kwargs))
-Prototype(OT::Type{<:StorageType}, proto::Object; kwargs...) = Object{Nothing}(OT(proto, kwargs))
-Prototype{newUT}(proto::Object{UT,OT}; kwargs...) where {newUT,UT,OT} = Object{newUT}(_constructorof(OT)(proto, kwargs))
-Prototype(proto::Object{UT,OT}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(proto, kwargs))
+Object{UT}(OT::Type{<:StorageType}, proto::Tuple{Object}; kwargs...) where {UT} = Object{UT}(OT(first(proto), kwargs))
+Object(OT::Type{<:StorageType}, proto::Tuple{Object}; kwargs...) = Object{Nothing}(OT(first(proto), kwargs))
+Object{newUT}(proto::Tuple{Object{UT,OT}}; kwargs...) where {newUT,UT,OT} = Object{newUT}(_constructorof(OT)(first(proto), kwargs))
+Object(proto::Tuple{Object{UT,OT}}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(first(proto), kwargs))
 
 # interface
 Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is false for nested prototype access
@@ -115,11 +105,11 @@ Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is fa
 end
 Base.setproperty!(obj::Object, s::Symbol, v) = (_storeof(obj)[s] = v)
 Base.propertynames(obj::Object) = Tuple(keys(_storeof(obj)))
-Base.iterate(obj::Object, state=0, propnames=propertynames(obj)) = begin
-    i = state + firstindex(propnames)
-    i > lastindex(propnames) && return nothing
-    ((propnames[i] => getproperty(obj, propnames[i]; iscaller=false)), state+1)
+Base.iterate(obj::Object, i=firstindex(keys(_storeof(obj))), store=_storeof(obj), names=keys(store)) = begin
+    i > lastindex(names) && return nothing
+    ((names[i], store[names[i]]), i+1)
 end
+Base.length(obj::Object) = length(keys(_storeof(obj)))
 Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
 Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
 Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin

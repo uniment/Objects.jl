@@ -51,13 +51,13 @@ If left unspecified, the default is `Mutable`.
 # constructing from scratch
     Object{[TypeTag]}([StorageType] [; kwargs...])
 # changing type ("converting")
-    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
-    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
-    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Object)
+    Object{[TypeTag]}([StorageType,] obj::Any)
+    Object{[TypeTag]}([StorageType,] props::AbstractDict)
 # constructing from template
     (template::Object)([; props...])
 # prototype inheritance
-    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] (proto::Object,) [; kwargs...])
 ```
 
 ## Composing Objects
@@ -124,26 +124,37 @@ obj = Object(
 @show obj.b.c                   # "Hello!"
 ```
 
-### Composing objects by splatting dictionaries, generators, and other objects
+### Composing objects by splatting named tuples, dictionaries, generators, and other objects
 
 Iterable collections should be splatted into keyword arguments. Later arguments override earlier ones.
 
 Remember to put `;` before the splatted object to ensure it splats into keyword arguments, not regular arguments. (note 1)
 
-Dictionaries:
+**Named Tuples:**
+
+```julia
+defaults = (a=420, b=3.14)
+obj = Object(; defaults..., b=69)   # nice
+```
+
+Notice that not only are values overridden by later arguments, but data types are overridden too.
+
+**Dictionaries:**
 
 ```julia
 obj = Object(; a=2, Dict(:a=>1, :b=>2)..., b=3)
 ```
 
-Generators:
+Notice that later arguments, including those splatted in, always override earlier ones.
+
+**Generators:**
 
 ```julia
 messages = Object(; ((Symbol(name) => "Hello, $name") for name ∈ ["Joe", "Sally", "Mark"])..., Mark="G'day, Mark")
 @show messages.Mark
 ```
 
-Other `Object`s:
+**Other `Object`s:**
 
 ```julia
 obj = Object(a=1, b=2)
@@ -166,7 +177,7 @@ and look for `:c` and `:d`. As a result, I only allow splatting into the keyword
 Syntax:
 
 ```julia
-    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Any)
 ```
 
 If its properties are accessible with `.` dot syntax, then it can be `Object`ified.
@@ -190,6 +201,8 @@ Maybe that can be changed one day, that could be cool idk
 
 You can add and override parameters by splatting in more or with keyword arguments:
 
+NO YOU CAN'T: I REMOVED THIS FEATURE.
+
 ```julia
 obj3 = Object(test1; Dict(:b=>'🐢')..., c='🐢')
 @show (; obj3...)                # turtles all the way down
@@ -202,7 +215,7 @@ obj3 = Object(test1; Dict(:b=>'🐢')..., c='🐢')
 
 Syntax:
 ```julia
-    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs..
+    Object{[TypeTag]}([StorageType,] props::AbstractDict)
 ```
 
 If a dictionary is not splatted, then it will be assumed that it is being used to hold a hierarchical structure with nested dictionaries. A new `Object` will be created recursively, with each nested dictionary being represented as a nested `Object`.
@@ -225,7 +238,7 @@ Note that splatting is not recursive; these are special methods for converting b
 Syntax:
 
 ```julia
-    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Object)
 ```
 
 Keep same property values and prototype, but change the object type between `Dynamic`, `Mutable`, or `Static`.
@@ -326,14 +339,14 @@ To change some functions but keep the other properties and methods, either use s
 
 ## Constructing from Templates
 
-Ultimately, the role that a `struct` serves is to define a specific structure for how data is to be organized, and to make sure both human and compiler know it---not just for code consistency, but so that specialized methods can be generated. With these `Object`s, that role is served by *templates*.
+Ultimately, the role that a `struct` serves is to define a specific structure for how data is to be organized, and to make sure both human and compiler know it—not just for code consistency, but so that specialized methods can be generated for runtime speed. With `Object`s, that role is served by *templates*.
 
 Syntax:
 ```julia
     (template::Object)([; props...])
 ```
 
-Every `Object` instance is a functor, and calling it creates a new `Object` for which it serves as a template. Example:
+Every `Object` instance is a functor, and calling it uses it as a template to create a new object. Example:
 
 ```julia
 Template = Object(a=0, b=0.0)
@@ -352,29 +365,16 @@ Template(a=2.5)                 # error, can't convert to Int
 Template(c=1)                   # should throw an error but currently just ignores extra argument
 ```
 
-So notice that unlike the other construction techniques, using a template is much more restrictive. Unlike composition techniques, it comes with speed and type stability benefits.
+So notice that unlike the other construction techniques, using a template is much more restrictive. Unlike composition techniques, it comes with massive benefits in speed and type stability.
 
 See bottom for some benchmarking.
-
-### Direct Template Construction
-
-The above technique uses the template to set default values; when calling the template, any values that have not been specified in the call will assume those of the template. The role of the template is then twofold: a) strictly define the names and types of variables, and b) set default values. Also, values can be specified out-of-order from the original template definition (e.g., `(a=1, b=2)` and `(b=2, a=1)` work similarly)
-
-There are times when you only want the template for the strictness, and you don't need to load any default values from it. In this case, this can be used:
-```julia
-typeof(Template)(a=5, b=6.0)
-```
-note that argument ordering must be exactly the same as was used for the template, and variable types must be exactly the same (not just convertible).
-
-In theory this construction method should be the most efficient, but unfortunately it's not working that way right now. I'm still troubleshooting this; check back later.
-
 
 
 ## Prototype Inheritance
 
 Syntax:
 ```julia
-    Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] (proto::Object,) [; kwargs...])
 ```
 
 Create an object using `proto` as a prototype. The new object defaults to the same type as its prototype, unless otherwise specified. Think of it like the prototype is picking up new tricks and being repackaged into a new object.
@@ -382,13 +382,15 @@ Create an object using `proto` as a prototype. The new object defaults to the sa
 ```julia
 obj = Object(a=1, b=2)              # original object
 @show obj.a, obj.b                  # (1, 2)
-newObj = Prototype(obj, b=3, c=4)   # newObj inherits a and b, and overrides b
+newObj = Object((obj,), b=3, c=4)   # newObj inherits a and b, and overrides b
 @show newObj.a, newObj.b, newObj.c  # (1, 3, 4)
 obj.a, obj.b = 2, 1                 # change in obj.a passes through to newObj, obj.b does not
 @show newObj.a, newObj.b, newObj.c  # (2, 3, 4)
-newNewObj = Prototype(newObj, c=5, d=6)
+newNewObj = Object((newObj,), c=5, d=6)
 @show [newNewObj[s] for s ∈ (:a,:b,:c,:d)]    # [2, 3, 5, 6]
 ```
+
+Notice that `proto` is packed into a one-sized `Tuple`. Remember to add the comma!
 
 Implementation-wise, `newObj` stores a reference to its prototype `obj`; all properties and methods of `obj` are accessible to `newObj`, and any changes to `obj` will be reflected by `newObj`. `newNewObj` stores a reference to `newObj`.
 
@@ -401,8 +403,8 @@ Because prototypes are inherited by storing a reference, it is possible to build
 You can make an object which is *somewhat* static, and *somewhat* mutable, using inheritance:
 ```julia
 a = Object(Static, a=1)
-b = Prototype(Mutable, a, b=2)
-c = Prototype(Static, b, c=3)
+b = Object(Mutable, (a,), b=2)
+c = Object(Static, (b,), c=3)
 @show (; c...)
 ```
 Object `c` has three accessible properties: `c.a`, `c.b`, and `c.c`. Among these, only `c.b` is mutable by changing `b.b`.
@@ -411,6 +413,17 @@ b.b = 0
 @show (; c...)
 ```
 
+This can get really funky if you use a `Dynamic` object as a prototype for a `Static` or `Mutable` object. Any properties that the static or mutable child object owns, of course, will be type-stable. However, any properties inherited from the dynamic prototype will be type-unstable. For example:
+
+```julia
+a = Object(Dynamic; a=1)
+b = Object(Static, (a,); b=2)
+@code_warntype (x->x.b)(b)
+@code_warntype (x->x.a)(b)
+```
+
+Understand this, and master the universe.
+
 ### Multiple Inheritance
 
 Strictly speaking, multiple inheritance isn't implemented. But it's easy to splat objects together to compose a new object that takes traits from multiple objects.
@@ -418,13 +431,13 @@ Strictly speaking, multiple inheritance isn't implemented. But it's easy to spla
 ```julia
 parent = Object(firstname="Jeanette", lastname="Smith", hobby="Fishing")
 friend = Object(hobby="Skiing")
-child  = Prototype(parent; friend..., firstname="Kevin")
+child  = Object((parent,); friend..., firstname="Kevin")
 
 @show child.firstname, child.lastname, child.hobby    
 # from self, inherited from parent, and adopted from friend
 ```
 
-Inheritance comes primarily from parent, but friend's preferences get splatted in and override parent's.
+Prototype inheritance comes primarily from parent, but friend's preferences compose by getting splatted in and override parent's.
 
 Changes in `parent.lastname` are reflected in `child`, but changes in `friend.hobby` are not.
 
@@ -445,7 +458,7 @@ c = Object(k=5, l=6);
 d = Object(l=7, m=8);
 e = Object(m=9, n=10);
 
-@show x = Prototype(Prototype(Prototype(Prototype(a; b...); c...); d...); e...)
+@show x = Object((Object((Object((Object((a,); b...),); c...),); d...),); e...)
 @show y = Object(; a..., b..., c..., d..., e...) # objects splatted later override earlier objects
 @show z = Object(; x...)
 @show Dict(x) == Dict(y)
@@ -472,7 +485,7 @@ Person = Object(
     )
 )
 
-amy = Prototype(Person; Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
+amy = Object((Person,); Person.traits..., name="Amy") # Amy hasn't been born yet and currently only has a name
 amy.height = 45.5; # Amy has now been born, but is still zero years old
 @show amy
 @show amy.talk()
@@ -485,7 +498,7 @@ Notice how `Person.traits` serves as a placeholder to set default personal value
 Additional note when using `Mutable` and `Static` types: the resulting object type matters because when the object is passed to a function, the function is compiled to that type. When using the same prototype and default traits, the object type is fully consistent (even down to the argument ordering!). This means that functions that have been compiled for one instance, don't have to be recompiled for additional instances.
 
 ```julia
-joe = Prototype(Person; Person.traits..., name="Joe", age=45, siblings=3)
+joe = Object((Person,); Person.traits..., name="Joe", age=45, siblings=3)
 @show joe.talk()
 @show typeof(joe)
 @show typeof(joe) == typeof(amy)
@@ -524,14 +537,14 @@ g(obj::Object{:neg}) = -obj.x^2
 This type tag is automatically inherited.
 
 ```julia
-@show g(Prototype(a,x=2)), g(Prototype(b,x=2))      # (4, -4)
+@show g(Object((a,),x=2)), g(Object((b,),x=2))      # (4, -4)
 ```
 
 The type tag can also be changed.
 
 To change type while *inheriting* traits (i.e., using `a` as a prototype):
 ```julia
-a_neg = Object{:neg}(Prototype(a))
+a_neg = Object{:neg}((a,))
 ```
 
 To change type while *copying* traits (i.e., copying `a`'s properties and keeping `a`'s prototype):
@@ -546,6 +559,8 @@ To change type while *flattening* traits (i.e., copying `a`'s properties and any
 a_neg = Object{:neg}(; a...)
 ```
 
+(note this is a bad example because `a` has no prototype)
+
 When unspecified, the type tag default is `Nothing`.
 
 ### Object Type Method Polymorphism
@@ -558,8 +573,8 @@ traits = Object(age=0, name="", punish = let
     function f(self::Object{:teen}) "scold sternly for $(self.age) seconds" end
     function f(self::Object{:adult}) "express disappointment for $(self.age) years" end
 end)
-tommy = Prototype(Object{:child}(traits); name="tommy", age=5)
-jeff  = Prototype(Object{:adult}(traits); name="jeff", age=25)
+tommy = Object{:child}((traits,); name="tommy", age=5)
+jeff  = Object{:adult}((traits,); name="jeff", age=25)
 @show tommy.punish(), jeff.punish()
 ```
 
@@ -576,8 +591,8 @@ abstract type Dog <: Animal end
 # prototypes
 const Prototypes = Object(Dynamic)
 Prototypes.Animal = Object{Animal}(; eyes=2, legs=4, size=:large)
-Prototypes.Human = Prototype{Human}(Prototypes.Animal; legs=2, artificial_legs=0, size=:medium)
-Prototypes.Dog = Prototype{Dog}(Prototypes.Animal; size=:small)
+Prototypes.Human = Object{Human}((Prototypes.Animal,); legs=2, artificial_legs=0, size=:medium)
+Prototypes.Dog = Object{Dog}((Prototypes.Animal,); size=:small)
 
 # defining a method extends naturally to subtypes
 getspeed(animal::Object{<:Animal}) = animal.legs
@@ -681,14 +696,14 @@ Static objects:
 using BenchmarkTools
 struct TestStatic a::Float64; b::Int; c::Char end
 Template = Object(Static, a=0.0, b=0, c='a')
-# constructing by splatting: 24.487 ms (690004 allocations: 36.85 MiB)
-@btime begin [Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# template construction: 519.800 μs (20004 allocations: 859.47 KiB)
-@btime begin [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# construction from scratch: 151.500 μs (2 allocations: 234.42 KiB)
-@btime begin [Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# basic struct: 146.700 μs (2 allocations: 234.42 KiB)
-@btime begin [TestStatic(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
+# constructing by splatting: 25.528 ms (740006 allocations: 41.28 MiB) <- a lot is from calling propertynames
+@btime let Template=Template; [Object(Static; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# template construction: 158.800 μs (4 allocations: 234.50 KiB)
+@btime let Template=Template; [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# construction from scratch: 154.100 μs (2 allocations: 234.42 KiB)
+@btime let Template=Template; [Object(Static; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# basic struct: 151.900 μs (2 allocations: 234.42 KiB)
+@btime let Template=Template; [TestStatic(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
 ```
 
 Mutable objects have almost identical performance:
@@ -696,16 +711,20 @@ Mutable objects have almost identical performance:
 ```julia
 mutable struct TestMutable a::Float64; b::Int; c::Char end
 Template = Object(Mutable, a=0.0, b=0, c='a')
-# constructing by splatting: 24.262 ms (710004 allocations: 37.16 MiB)
-@btime begin [Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# template construction: 642.900 μs (50004 allocations: 1.30 MiB)
-@btime begin [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# construction from scratch: 225.900 μs (30002 allocations: 703.17 KiB)
-@btime begin [Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
-# basic struct: 172.400 μs (10002 allocations: 390.67 KiB)
-@btime begin [TestMutable(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
+# constructing by splatting: 25.499 ms (770006 allocations: 41.73 MiB)
+@btime let Template=Template; [Object(Mutable; Template..., a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# template construction: 231.400 μs (30004 allocations: 703.25 KiB)
+@btime let Template=Template; [Template(a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# construction from scratch: 228.000 μs (30002 allocations: 703.17 KiB)
+@btime let Template=Template; [Object(Mutable; a=rand(), b=rand(1:10), c=rand('a':'z')) for i=1:10_000] end;
+# basic struct: 182.500 μs (10002 allocations: 390.67 KiB)
+@btime let Template=Template; [TestMutable(rand(), rand(1:10), rand('a':'z')) for i=1:10_000] end;
 ```
 
-Hm. Why is splatting so damn slow? Let's fix that.
+The performance when constructing from a template is maintained even if the arguments are out of order from their original creation (try it).
+
+
+Why is splatting so damn slow? That really needs to be fixed.
+
 
 zr

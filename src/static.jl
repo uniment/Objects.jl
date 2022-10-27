@@ -6,15 +6,16 @@ struct Static{PT<:PrototypeTypes, PP<:NamedTuple} <: StorageType
 end
 
 # Constructors
-Static(prototype::PrototypeTypes, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) = 
+Static(prototype::PrototypeTypes, properties::Union{Base.Pairs}) = 
     Static(prototype, NamedTuple(properties))
 
 
 
 # to handle template construction
-Static{PT,PP}(::Val{:template}, store::Static; kwargs...) where {PT,PP} = begin
-    Static{PT,PP}(_getproto(store), PP(getindex(k ∈ keys(kwargs) ? kwargs : _getprops(store), k) for k ∈ keys(_getprops(store))))
+Static{PT,PP}(::Val{:template}, store::Static, kwargs) where {PT,PP} = begin
+    Static{PT,PP}(_getproto(store), merge(_getprops(store), NamedTuple(kwargs)))
 end
+
 
 
 

@@ -2,7 +2,6 @@ module Objects
 
 export Object, Prototype, Dynamic, Mutable, Static, getprototype, ownpropertynames, ownproperties
 
-abstract type Prototype{A,B} end
 abstract type StorageType end
 
 # core `Object` type:

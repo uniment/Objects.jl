@@ -26,3 +26,18 @@ new interface
     Prototype{[TypeTag]}([StorageType,] proto::Object [; kwargs...])
 ```
 
+newest interface
+
+
+```julia
+# constructing from scratch
+    Object{[TypeTag]}([StorageType] [; kwargs...])                             # normal construction
+# changing type ("converting")
+    Object{[TypeTag]}([StorageType,] obj::Object)                               # change type of object
+    Object{[TypeTag]}([StorageType,] obj::Any)                                  # copies properties of arbitrary types
+    Object{[TypeTag]}([StorageType,] props::AbstractDict)                       # recursing through dictionary
+# constructing from template
+    (template::Object)([; kwargs...])                                           # replicate with new values
+# inheritance
+    Object{[TypeTag]}([StorageType,] (proto::Object,) [; kwargs...])            # notice the one-size tuple
+```

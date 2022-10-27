@@ -6,13 +6,14 @@ struct Mutable{PT<:PrototypeTypes, PP<:NamedTuple{S,<:NTuple{N,Base.RefValue}} w
 end
 
 # Constructors
-Mutable(prototype::PrototypeTypes, properties::Union{Base.Pairs, NTuple{N,Pair} where N}) = 
+Mutable(prototype::PrototypeTypes, properties::Base.Pairs) = 
     Mutable(prototype, NamedTuple(properties))
-Mutable(prototype::PrototypeTypes, properties::NamedTuple{K,V}) where {K,V} = 
+Mutable(prototype::PrototypeTypes, properties::NamedTuple{K,V}) where {K,V} =
     Mutable(prototype, NamedTuple{K}(map(v -> Ref(v), properties)))
 
 # to handle template construction
-Mutable{PT,PP}(::Val{:template}, store::Mutable{PT,PP}; kwargs...) where {PT,PP} = begin
+Mutable{PT,PP}(::Val{:template}, store::Mutable{PT,PP}, kwargs) where {PT,PP} = begin
+    any(k ∉ keys(store.properties) for k ∈ keys(kwargs)) && Mutable{PT,PP}(_getproto(store), merge(store.properties, kwargs)) # forces error with ok message
     a, b = store.properties, kwargs
     propscopy = PP(typeof(a[k])(k ∈ keys(b) ? b[k] : a[k][]) for k ∈ keys(a))
     Mutable{PT,PP}(_getproto(store), propscopy)
