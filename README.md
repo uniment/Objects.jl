@@ -224,7 +224,7 @@ convert(Dict, config)
 Note that splatting is not recursive; these are special methods for converting between nested dictionaries and `Object`s.
 
 
-### Composing after
+### Carving up objects
 
 Of course, once something has been converted into an `Object`, it can be splatted to create new objects.
 
@@ -232,14 +232,22 @@ Of course, once something has been converted into an `Object`, it can be splatte
 composed_config = Object(; config..., username="Why didn't I have a username before?")
 ```
 
-You can also select specific items by indexing:
+You can also select specific items by indexing (this creates a new `Object` with these properties):
 ```julia
 config[(:usertype, :password)]
 ```
 
-and you can drop specific items (although this behavior is new and unstable, so don't rely on it yet)
+and using generators:
+
 ```julia
-drop(config, :creationdate)
+obj = Object(a=1, b=2, c=3, d=4, e=5)
+obj[(k for (k,v) ∈ obj if v > 2)]
+```
+
+and you can drop specific items (this creates a new `Object` with the same prototype, dropping only "own" properties when available; no error if dropping a property which doesn't exist)
+
+```julia
+drop(config, :creationdate, :userage)
 ```
 
 
@@ -636,6 +644,12 @@ Notice that the path for objects to inherit traits (prototype inheritance) is se
 Gets `obj`'s prototype object. 
 
 Unlike JavaScript, an object's prototype cannot be changed (so there's no `setprototype!` function).
+
+```julia
+    ownpropertynames
+    ownproperties
+    drop
+```
 
 
 ## Performance Tip

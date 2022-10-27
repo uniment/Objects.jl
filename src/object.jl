@@ -111,12 +111,20 @@ Base.merge(nt::NamedTuple, obj::Object) = (; nt..., NamedTuple{keys(obj)}(values
 
 Base.length(obj::Object) = length(keys(getfield(obj, :store)))
 Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
-Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
 Base.getindex(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {N,UT,OT} =
     Object{UT}(_constructorof(OT); NamedTuple{n}((; obj...))...)
-drop(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {UT,OT,N} = 
-    Object{UT}(_constructorof(OT); NamedTuple{((k for k ∈ keys(obj) if k ∉ n)...,)}((; obj...))...)
-drop(obj::Object, n::Symbol...) = drop(obj, (n...,))
+Base.getindex(obj::Object, n::Base.Generator) = getindex(obj, (n...,))
+Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
+#drop(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {UT,OT,N} = 
+#    Object{UT}(_constructorof(OT); NamedTuple{((k for k ∈ keys(obj) if k ∉ n)...,)}((; obj...))...)
+drop(obj::Object{UT,OT}, n::Symbol...) where {UT,OT} = begin
+    store = getfield(obj, :store)
+    ownkeys = keys(store.properties)
+    newkeys = (k for k ∈ ownkeys if k ∉ (n...,))
+    valgen = (store[k] for k ∈ ownkeys)
+    Object{UT}(_constructorof(OT), (getprototype(obj),); NamedTuple{(newkeys...,)}((; zip(keys(store.properties), valgen)...))...)
+end
+
 Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin
     store = getfield(obj, :store); props = _getprops(store)
     print(io, "Object{",(UT isa Symbol ? ":" : ""), string(UT),", ", string(nameof(OT)), "}(\n    prototype: ", 
