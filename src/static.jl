@@ -26,7 +26,7 @@ _getprops(store::Static) = store.properties
 Base.getindex(store::Static, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s]
     isnothing(store.prototype) && throw("property $s not found")
-    getproperty(store.prototype, s; iscaller=false)
+    getfield(store.prototype, :store)[s]
 end
 Base.setindex!(store::Static, v, s::Symbol) = throw("cannot change property $s of a `Static` object")
 #zr

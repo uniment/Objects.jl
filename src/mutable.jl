@@ -26,7 +26,7 @@ _getprops(store::Mutable) = (; map(v->(v,store.properties[v][]), keys(store.prop
 Base.getindex(store::Mutable, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s][]
     isnothing(store.prototype) && throw("property $s not found")
-    getproperty(store.prototype, s; iscaller=false)
+    getfield(store.prototype, :store)[s]
 end
 Base.setindex!(store::Mutable, v, s::Symbol) = (store.properties[s][] = v)
 #zr

@@ -8,7 +8,7 @@ abstract type StorageType end
 include("object.jl")
 
 # object storage types
-include("common.jl") # rename this file one day
+include("storage.jl")
 
 const DEFAULT_STORAGE_TYPE = Mutable
 

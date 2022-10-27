@@ -27,7 +27,7 @@ _getprops(store::Dynamic) = NamedTuple{Tuple(keys(store.properties))}(values(sto
 Base.getindex(store::Dynamic, s::Symbol) = begin
     s ∈ keys(store.properties) && return store.properties[s]
     isnothing(store.prototype) && throw("property $s not found")
-    getproperty(store.prototype, s; iscaller=false)
+    getfield(store.prototype, :store)[s]
 end
 Base.setindex!(store::Dynamic, v, s::Symbol) = (store.properties[s] = v)
 #zr

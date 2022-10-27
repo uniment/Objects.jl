@@ -15,6 +15,7 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 
 # Things to do
 
+- Holy shit mutable property access and setting is slow af!!!
 - Make object splatting run faster!!!
 - !!!!!
 - Check template constructor: way to make error when adding an invalid property without sacrificing runtime?
@@ -22,6 +23,11 @@ Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameo
 - Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
 - Clean up dynamic/static/mutable constructors after removing args::Pair...
 - Make Tests
+
+
+## some lessons learned during this project
+- for speed, defer to using generators and iterators instead of specific data structures when possible (to avoid rearranging data)
+- 
 
 
 Do something with this sjit:

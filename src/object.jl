@@ -43,8 +43,6 @@ struct Object{UserType, StorageType}
 end
 
 
-_storeof(obj::Object) = getfield(obj, :store)
-
 # default constructors
 Object{UT}(store::OT) where {UT,OT<:StorageType} = Object{UT,OT}(store)
 Object(store::OT) where {OT<:StorageType} = Object{Nothing,OT}(store)
@@ -72,9 +70,9 @@ Object{UT}(obj) where {UT} = Object{UT}(DEFAULT_STORAGE_TYPE, obj)
 Object(obj) = Object{Nothing}(obj)
 
 # object type
-Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object) where UTnew = Object{UTnew}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
-Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}) where {UT,OT} = Object{UT}(OTnew(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
-Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = Object{UTnew}(_constructorof(OT)(_getproto(_storeof(obj)), _getprops(_storeof(obj))))
+Object{UTnew}(OTnew::Type{<:StorageType}, obj::Object) where UTnew = Object{UTnew}(OTnew(_getproto(getfield(obj, :store)), _getprops(getfield(obj, :store))))
+Object(OTnew::Type{<:StorageType}, obj::Object{UT,OT}) where {UT,OT} = Object{UT}(OTnew(_getproto(getfield(obj, :store)), _getprops(getfield(obj, :store))))
+Object{UTnew}(obj::Object{UT,OT}) where {UTnew,UT,OT} = Object{UTnew}(_constructorof(OT)(_getproto(getfield(obj, :store)), _getprops(getfield(obj, :store))))
 Object(obj::Object) = obj
 
 # recursive dict expansion
@@ -89,7 +87,7 @@ Object(dict::AbstractDict) = Object{Nothing}(dict)
 
 # code reuse
 # constructing from a template
-(template::Object{UT,OT})(; kwargs...) where {UT,OT} = Object{UT,OT}(OT(Val(:template), _storeof(template), kwargs))
+(template::Object{UT,OT})(; kwargs...) where {UT,OT} = Object{UT,OT}(OT(Val(:template), getfield(template, :store), kwargs))
 
 # prototype inheritance
 Object{UT}(OT::Type{<:StorageType}, proto::Tuple{Object}; kwargs...) where {UT} = Object{UT}(OT(first(proto), kwargs))
@@ -98,39 +96,45 @@ Object{newUT}(proto::Tuple{Object{UT,OT}}; kwargs...) where {newUT,UT,OT} = Obje
 Object(proto::Tuple{Object{UT,OT}}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(first(proto), kwargs))
 
 # interface
-Base.getproperty(obj::Object, s::Symbol; iscaller=true) = begin # iscaller is false for nested prototype access
-    v = _storeof(obj)[s]
-    v isa Function && return iscaller ? ((a...; k...) -> v(obj, a...; k...)) : v
+Base.getproperty(obj::Object, s::Symbol) = begin
+    v = getfield(obj, :store)[s]
+    v isa Function && return (a...; k...) -> v(obj, a...; k...)
     v
 end
-Base.setproperty!(obj::Object, s::Symbol, v) = (_storeof(obj)[s] = v)
-Base.propertynames(obj::Object) = Tuple(keys(_storeof(obj)))
-Base.iterate(obj::Object, i=firstindex(keys(_storeof(obj))), store=_storeof(obj), names=keys(store)) = begin
-    i > lastindex(names) && return nothing
-    ((names[i], store[names[i]]), i+1)
-end
-Base.length(obj::Object) = length(keys(_storeof(obj)))
+Base.setproperty!(obj::Object, s::Symbol, v) = (getfield(obj, :store)[s] = v)
+Base.propertynames(obj::Object) = Symbol[keys(getfield(obj, :store))...]
+
+Base.keys(obj::Object) = keys(getfield(obj, :store))
+Base.values(obj::Object) = values(getfield(obj, :store))
+Base.iterate(obj::Object, itr=zip(keys(obj), values(obj))) = Iterators.peel(itr)
+
+Base.length(obj::Object) = length(keys(getfield(obj, :store)))
 Base.getindex(obj::Object, n) = getproperty(obj, Symbol(n))
 Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
 Base.show(io::IO, obj::Object{UT,OT}) where {UT,OT} = begin
-    store = _storeof(obj); props = _getprops(store)
+    store = getfield(obj, :store); props = _getprops(store)
     print(io, "Object{",(UT isa Symbol ? ":" : ""), string(UT),", ", string(nameof(OT)), "}(\n    prototype: ", 
         replace(string(isnothing(_getproto(store)) ? "none" : _getproto(store)), "\n"=>"\n    "), ",\n    properties: ⟨", 
         replace(join([(v isa Object ? "\n" : "")*"$k = $v" for (k,v) ∈ zip(keys(props), values(props))], ", "), "\n"=>"\n    "), "⟩\n)")
 end
 Base.copy(obj::Object) = begin
-    store = _storeof(obj)
+    store = getfield(obj, :store)
     typeof(obj)(typeof(store)(_getproto(store), copy(store.properties)))
 end
 Base.deepcopy(obj::Object) = begin
-    store = _storeof(obj)
+    store = getfield(obj, :store)
     typeof(obj)(typeof(store)(deepcopy(_getproto(store)), copy(store.properties)))
 end
 Base.:<<(a::Object, b::Object) = (aproto = getfield(a, :store).prototype; isnothing(aproto) ? false : (aproto==b || aproto<<b))
 
+# Object-to-NamedTuple conversion
+Base.convert(T::Type{NamedTuple}, obj::Object) = begin
+
+end
+
 # Object-to-Dictionary conversions
 Base.convert(T::Type{<:AbstractDict}, obj::Object) = begin
-    store = _storeof(obj); props = _getprops(store)
+    store = getfield(obj, :store); props = _getprops(store)
     isnothing(_getproto(store)) ? T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))) :
     merge(convert(T, _getproto(store)), T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))))
 end
@@ -140,19 +144,19 @@ end
 
 Retrieves `obj`'s prototype object.
 """
-getprototype(obj::Object) = _getproto(_storeof(obj))
+getprototype(obj::Object) = _getproto(getfield(obj, :store))
 
 """
     ownpropertynames(obj::Object)::Tuple
 
-Retrives `obj`'s property names, excluding those of its prototype
+Retrieves `obj`'s property names, excluding those of its prototype
 """
-ownpropertynames(obj::Object) = Tuple(keys(_getprops(_storeof(obj))))
+ownpropertynames(obj::Object) = Tuple(keys(_getprops(getfield(obj, :store))))
 """
     ownproperties(obj::Object)::Base.Generator
 
 Returns a generator for splatting `obj`'s own properties.
 """
-ownproperties(obj::Object) = _ownprops_itr(_storeof(obj))
+ownproperties(obj::Object) = _ownprops_itr(getfield(obj, :store))
 
 #zr
