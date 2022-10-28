@@ -23,9 +23,9 @@ using Objects
 
 Instances of `Object` have properties that can be casually and easily created and composed, and then accessed and changed using dot-syntax.
 
-Once an `Object` has been carved into the desired form, it can serve as a "template" for replication to create clones with the same datatypes but with custom values.
+Once an object has been carved into the desired form, it can serve as a "template" for replication to create clones with the same datatypes but with custom values.
 
-In addition, `Object`s can inherit traits from other `Object`s through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
+In addition, objects can inherit traits from other objects through prototype inheritance. [Prototype inheritance](https://en.wikipedia.org/wiki/Prototype-based_programming) is a simple object inheritance model most widely known for its use in JavaScript and Lua. These `Object`s behave similarly to JavaScript's `Object`s, but with the benefits of strict inferred typing and immutability when desired.
 
 Object-specific methods can be inherited, overridden, and extended. Objects can also be tagged with optional types, allowing multiple dispatch to implement polymorphism.
 
@@ -37,7 +37,7 @@ It's also just fun. Nobody likes `ERROR: invalid redefinition of constant MyStru
 
 ## Object Storage Types
 
-Three subtypes of `Object` storage are provided: `Dynamic`, `Static`, and `Mutable`. Their behaviors are identical, except for property-setting flexibility and performance.
+Three subtypes of object are provided by storage technique: `Dynamic`, `Static`, and `Mutable`. Their external behaviors are identical, except for property-setting flexibility and performance.
 
 - Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
 - Static: maximum performance—after construction, properties cannot be changed.
@@ -251,7 +251,7 @@ for k ∈ keys(y) y[k]^=2 end # let's square things up a bit
 MyStruct(y...)              # and we're back! (now it can be passed to methods specialized on MyStruct)
 ```
 
-(bug: currently, doing this with `Dynamic` objects is NOT a good idea.)
+(bug note: currently, doing this with `Dynamic` objects is NOT a good idea, because their keys are out of order.)
 
 You can check the order of splatting by inspecting `keys(y)`.
 
