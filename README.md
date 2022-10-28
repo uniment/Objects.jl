@@ -794,6 +794,21 @@ Template = Object(Mutable, a=0.0, b=0, c='a')
 
 The performance when constructing from a template is maintained even if the arguments are out of order from their original creation (try it).
 
+## Pro/Con
+
+Using object templates as a stand-in for a `struct` is nice because templates provide default values, and you can fill in properties out of order from how they were originally defined. 
+
+The drawback is that, if a property would've had a `Union` or `UnionAll` type, this can be communicated in a `struct` definition but it cannot be communicated (or even allowed!) by the template. For structs with multiple variables of variant types, the number of templates required to communicate all the possibilities could be restrictive.
+
+This can be circumvented with object splatting, where property types can be overridden by new arguments. However, there is no enforcement of the types.
+
+So for some things, it seems there's no way around using `struct`.
+
+Unless... maybe I can think of something? `NamedTuples` provide the ability to carry abstract types...
+
+Object{UT}(OT, (a=Number, b=Float64, c=Any, d=String); a=1, b=2, c=3, d="hi") 🤔
+
+Can make it optional to specify types, and anything that's not specified is assumed to be a concrete type.
 
 
 zr

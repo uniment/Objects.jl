@@ -1,6 +1,6 @@
 # Ideas to explore
 
-- Use an ordered dict for Dynamic object type? YES. IMPLEMENT THIS.
+- Use an ordered dict for Dynamic object type? YES. IMPLEMENT THIS. check OrderedCollections.jl
 - allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly?
 - Check out other methods that JavaScript has and consider implementing them https://www.tektutorialshub.com/javascript/hasownproperty-in-javascript/
 - should it be possible to set arbitrary objects as prototypes? 🤔
