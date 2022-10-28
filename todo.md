@@ -1,27 +1,13 @@
 # Ideas to explore
 
-
-- when `Object`ifying arbitrary objects, can we access their base address?
-- Use an ordered dict for Dynamic type?
-- Idea: use the Dynamic, Static, and Mutable names as alternatives to Object(Dynamic, ...), Object(Static, ...) and Object(Mutable,...) respectively
-- Another idea: allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly.
+- Use an ordered dict for Dynamic object type?
+- allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly?
 - Check out other methods that JavaScript has and consider implementing them https://www.tektutorialshub.com/javascript/hasownproperty-in-javascript/
-- Eliminate kwargs from Object(obj; kwargs...) conversion syntax? Improves efficiency, but adds confusion
-- if splatting can be made faster, might be ok
-
-Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameof(OT))".
-
-
+- should it be possible to set arbitrary objects as prototypes? 🤔
+- Mull over objects.jl for "OT.name.wrapper" vs. "getfield(parentmodule(OT), nameof(OT))".
 
 # Things to do
 
-- Holy shit mutable property access and setting is slow af!!!
-- Make object splatting run faster!!!
-- !!!!!
-- Check template constructor: way to make error when adding an invalid property without sacrificing runtime?
-- Try to see if I can get strict template constructor `typeof(Template)(;kwargs...)` to run faster. (lines 91 and 92 of objects.jl)
-- Refactor the various `Object{[TypeTag]}([StorageType] ... )` definitions into generated functions 
-- Clean up dynamic/static/mutable constructors after removing args::Pair...
 - Make Tests
 
 

@@ -3,27 +3,27 @@
 
 Create a structured `Object` with properties specified by keyword arguments `kwargs`. Object type can be specified by `StorageType`, and additional type parameters can be specified by `TypeTag`. Later properties override earlier ones.
 
-Other iterable key=>value mappings, as from generators and other `Object`s, can be splatted into the keyword arguments as well.
+Other iterable key=>value mappings, as from generators, dictionaries, named tuples, and other `Object`s, can be splatted into the keyword arguments as well.
 
 `StorageType` can be `Static`, `Mutable`, or `Dynamic`, depending on performance needs. If not specified, default is `Mutable`.
 
 `TypeTag` is optional and does not affect `Object` behavior, but can be used to leverage Julia's type inference engine for multiple method dispatch.
 
-    Object{[TypeTag]}([StorageType,] props::AbstractDict [; kwargs...])
+    Object{[TypeTag]}([StorageType,] props::AbstractDict)
 
-Create an `Object` from a dictionary recursively with optional overriding properties set by `kwargs`.
+Create an `Object` from a dictionary recursively.
 
-    Object{[TypeTag]}([StorageType,] obj::Any [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Any)
 
-Create an `Object` from an arbitrary composite type with optional overriding properties set by `kwargs`.
+Create an `Object` from an arbitrary composite type.
 
-    Object{[TypeTag]}([StorageType,] obj::Object [; kwargs...])
+    Object{[TypeTag]}([StorageType,] obj::Object)
 
-Convert an `Object` from one set of `StorageType` and `TypeTag` to another, keeping prototype, with optional overriding properties set by `kwargs`. 
+Convert an `Object` from one set of `StorageType` and `TypeTag` to another, keeping prototype. 
 
-    (proto::Object)([StorageType] [; kwargs...])
+    (proto::Object)([; kwargs...])
 
-Every `Object` is a constructor. Call on the object to use it as a template for creating a new object with the exact same property names and types. Replicating a template is fast and efficient, especially for `Static` and `Mutable` types.
+Every `Object` is a constructor. Call on the object to use it as a template for creating a new object with the exact same property names and types.
 
     Object{[TypeTag]}([StorageType,] (proto::Object,) [; kwargs...])
 
@@ -32,7 +32,32 @@ Create a new object which references object `proto` as its prototype. Notice tha
     obj.meth = function(self, a, b, c) #=...=# end
     obj.meth(a, b, c)
 
-Calls a member method `meth` and passes `obj` as the first argument.
+Call a member method `meth`, passing `obj` as the first argument.
+
+    obj[k]
+
+access obj.k
+
+    obj[(:k1,:k2,:k3)]
+
+return new object with properties specified by tuple of symbols
+
+    obj[::Base.Generator]
+
+return new object with properties set by generator
+
+    drop(obj, :k1, :k2)
+
+return new object with keys removed (own keys only; prototype unchanged)
+
+    (; obj...)
+    (obj...,)
+
+splat object into a named tuple, or into a tuple of pairs
+
+    ((k,v) for (k,v) ∈ obj)
+
+generator to iterate over object's property names and values
 
     (; x, y, z) = obj
 
@@ -116,8 +141,7 @@ Base.getindex(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {N,UT,OT} =
     Object{UT}(_constructorof(OT); NamedTuple{n}((; obj...))...)
 Base.getindex(obj::Object, n::Base.Generator) = getindex(obj, (n...,))
 Base.setindex!(obj::Object, x, n) = setproperty!(obj, Symbol(n), x)
-#drop(obj::Object{UT,OT}, n::NTuple{N,Symbol}) where {UT,OT,N} = 
-#    Object{UT}(_constructorof(OT); NamedTuple{((k for k ∈ keys(obj) if k ∉ n)...,)}((; obj...))...)
+
 drop(obj::Object{UT,OT}, n::Symbol...) where {UT,OT} = begin
     store = getfield(obj, :store)
     ownkeys = keys(store.properties)
@@ -141,12 +165,8 @@ Base.deepcopy(obj::Object) = begin
     typeof(obj)(typeof(store)(deepcopy(_getproto(store)), copy(store.properties)))
 end
 Base.:<<(a::Object, b::Object) = (aproto = getfield(a, :store).prototype; isnothing(aproto) ? false : (aproto==b || aproto<<b))
+Base.:>>(a::Object, b::Object) = b << a
 Base.:(==)(a::Object, b::Object) = (typeof(a) == typeof(b)) && (getprototype(a) == getprototype(b)) && ((a...,) == (b...,))
-
-# Object-to-NamedTuple conversion
-Base.convert(T::Type{NamedTuple}, obj::Object) = begin
-
-end
 
 # Object-to-Dictionary conversions
 Base.convert(T::Type{<:AbstractDict}, obj::Object) = begin
