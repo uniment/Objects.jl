@@ -90,8 +90,9 @@ Object(dict::AbstractDict) = Object{Nothing}(dict)
 (template::Object{UT,OT})(; kwargs...) where {UT,OT} = Object{UT,OT}(OT(Val(:template), getfield(template, :store), kwargs))
 
 # prototype inheritance
-Object{UT}(OT::Type{<:StorageType}, proto::Tuple{Object}; kwargs...) where {UT} = Object{UT}(OT(first(proto), kwargs))
-Object(OT::Type{<:StorageType}, proto::Tuple{Object}; kwargs...) = Object{Nothing}(OT(first(proto), kwargs))
+const PrototypeTypes = Union{Object, Nothing}
+Object{UT}(OT::Type{<:StorageType}, proto::Tuple{PrototypeTypes}; kwargs...) where {UT} = Object{UT}(OT(first(proto), kwargs))
+Object(OT::Type{<:StorageType}, proto::Tuple{PrototypeTypes}; kwargs...) = Object{Nothing}(OT(first(proto), kwargs))
 Object{newUT}(proto::Tuple{Object{UT,OT}}; kwargs...) where {newUT,UT,OT} = Object{newUT}(_constructorof(OT)(first(proto), kwargs))
 Object(proto::Tuple{Object{UT,OT}}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(first(proto), kwargs))
 
@@ -140,6 +141,7 @@ Base.deepcopy(obj::Object) = begin
     typeof(obj)(typeof(store)(deepcopy(_getproto(store)), copy(store.properties)))
 end
 Base.:<<(a::Object, b::Object) = (aproto = getfield(a, :store).prototype; isnothing(aproto) ? false : (aproto==b || aproto<<b))
+Base.:(==)(a::Object, b::Object) = (typeof(a) == typeof(b)) && (getprototype(a) == getprototype(b)) && ((a...,) == (b...,))
 
 # Object-to-NamedTuple conversion
 Base.convert(T::Type{NamedTuple}, obj::Object) = begin

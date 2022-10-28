@@ -18,16 +18,16 @@ _union_names(a, ::Tuple{}) = a
 Base.keys(store::StorageType) = begin
     ownpropkeys = keys(store.properties)
     isnothing(store.prototype) && return ownpropkeys
-    reduce(keys(getfield(store.prototype, :store)); init=ownpropkeys) do acc, k
-        k ∈ acc ? acc : (acc..., k)
+    reduce(keys(getfield(store.prototype, :store)); init=ownpropkeys) do accumulator, k
+        k ∈ accumulator ? accumulator : (accumulator..., k)
     end
 end
 Base.values(store::StorageType) = begin
     ownpropkeys = keys(store.properties)
     ownpropvals = (store[k] for k ∈ keys(store.properties))
     isnothing(store.prototype) && return ownpropvals
-    reduce(keys(getfield(store.prototype, :store)); init=ownpropvals) do acc, k
-        k ∈ ownpropkeys ? acc : (acc..., getfield(store.prototype, :store)[k])
+    reduce(keys(getfield(store.prototype, :store)); init=ownpropvals) do accumulator, k
+        k ∈ ownpropkeys ? accumulator : (accumulator..., getfield(store.prototype, :store)[k])
     end
 end
 

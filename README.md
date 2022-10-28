@@ -70,44 +70,19 @@ Syntax:
 Easy.
 
 ```julia
-mut = Object(x=1, y=2)          # default type is `Mutable`
-mut.x + mut.y                   # 3
-mut.x = 2
-mut.x + mut.y                   # 4
+obj = Object(x=1, y=2)          # default type is `Mutable`
+obj.x + obj.y                   # 3
+obj.x = 2
+obj.x + obj.y                   # 4
 ```
 
 Can also access with `[]` syntax:
 
 ```julia
-@show mut.x
-@show mut[:x]
-@show mut["x"]
+@show obj.x
+@show obj[:x]
+@show obj["x"]
 ```
-
-### Dynamic and static object types
-
-For `Mutable` objects, you can't change property types or add new ones after object construction:
-
-```julia
-mut.x = 2.5                     # error
-mut.x = "hello"                 # error
-mut.z = 3                       # error
-```
-
-Add type argument of `Static`, `Mutable`, or `Dynamic` to specify object type.
-
-```julia
-dyn = Object(Dynamic, x=1, y=2) # can change anything at any time
-dyn.z = 3                       
-dyn.x + dyn.y + dyn.z           # 6
-
-stc = Object(Static, x=1, y=2)  # can't change anything after creation
-stc.x = 2                       # error
-```
-
-`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, throwing stuff together before worrying about formalizing, but not so good for efficient runtime. 
-
-`Dynamic` flexibility can also be dangerous when incorporated into large complicated inheritance structures; once things begin settling down and getting sorted out, start moving structures to `Mutable` or `Static`, or create composite types with `struct`.
 
 ### Nested structures
 
@@ -250,8 +225,69 @@ and you can drop specific items (this creates a new `Object` with the same proto
 drop(config, :creationdate, :userage)
 ```
 
+### Iterating over Objects
 
-## Copying Object into New Type and Tag
+We already saw splatting
+
+```julia
+(; obj...)
+```
+
+This splats into a NamedTuple, good for splatting into keyword arguments of functions. You can also splat into a tuple of (key => value) pairs, good for splatting into dictionaries:
+
+```julia
+(obj...,)
+```
+
+You can also loop by key and value
+```julia
+for (k,v) ∈ obj
+    println("key $k corresponds to value $v")
+end
+```
+
+or by `keys(obj)` and `values(obj)`.
+
+### Destructuring Objects
+
+`Object`s can be destructured like any other object with properties:
+```julia
+obj = Object(x=1, y=2, z=3)
+let (; x, y) = obj
+    @show x + y
+end
+```
+
+## Dynamic, mutable, and static object types
+
+For `Mutable` objects, you can't change property types or add new ones after object construction:
+
+```julia
+mut = Object(x=1, y=2)          # Mutable is default
+mut.x = 3.14                    # error
+mut.x = "hello"                 # error
+mut.z = 42                      # error
+```
+
+Add type argument of `Static`, `Mutable`, or `Dynamic` to specify object type.
+
+```julia
+mut == Object(Mutable, x=1, y=2)# true
+
+dyn = Object(Dynamic, x=1, y=2) # can change anything at any time
+dyn.z = 3                       
+dyn.x + dyn.y + dyn.z           # 6
+
+stc = Object(Static, x=1, y=2)  # can't change anything after creation
+stc.x = 2                       # error
+```
+
+`Dynamic` is very easy and casual to use, but unfortunately type instability causes lower performance. Good for hacking and playing, throwing stuff together before worrying about formalizing, but not so good for efficient runtime. 
+
+`Dynamic` flexibility can also be dangerous when incorporated into large complicated inheritance structures; once things begin settling down and getting sorted out, start moving structures to `Mutable` or `Static`, or create composite types with `struct`.
+
+
+### Copying Object into New Type and Tag
 
 Syntax:
 
@@ -268,36 +304,6 @@ dyno.c = 3
 locked = Object(Static, dyno)   # Create `Static` from `Dynamic`
 ```
 
-## Destructuring Objects
-
-`Object`s can be destructured like any other object with properties:
-```julia
-obj = Object(x=1, y=2, z=3)
-let (; x, y) = obj
-    @show x + y
-end
-```
-
-## Iterating over Objects
-
-We already saw splatting
-
-```julia
-(; obj...)
-```
-
-This splats into a NamedTuple. You can also splat into a tuple of (key => value) pairs:
-
-```julia
-(obj...,)
-```
-
-You can also loop by key and value
-```julia
-for (k,v) ∈ obj
-    println("key $k corresponds to value $v")
-end
-```
 
 ## Member Method Encapsulation
 
@@ -417,7 +423,7 @@ Notice that `proto` is packed into a one-sized `Tuple`. Remember to add the comm
 
 Implementation-wise, `newObj` stores a reference to its prototype `obj`; all properties and methods of `obj` are accessible to `newObj`, and any changes to `obj` will be reflected by `newObj`. `newNewObj` stores a reference to `newObj`.
 
-Note that because these `Object`s are the default `Mutable`, any properties not declared as "own" properties cannot be changed. This means that `newObj.a` cannot be changed, since it was never declared as its own property, and it will always reflect `obj.a`. To make arbitrary changes use `Dynamic` objects instead, and to lock `obj` from changing use a `Static` object instead.
+Note that because these `Object`s are the default `Mutable`, any properties not specified as "own" properties cannot be changed. This means that `newObj.a` cannot be changed, since it was never declared as its own property, and it will always reflect `obj.a`. To make arbitrary changes use `Dynamic` objects instead, and to lock `obj` from changing use a `Static` object instead.
 
 Because prototypes are inherited by storing a reference, it is possible to build inheritance chains where traits are replicated and pass through many inheriting objects.
 
@@ -514,7 +520,7 @@ amy.height = 45.5; # Amy has now been born, but is still zero years old
 @show amy.talk()
 ```
 
-The type of `Person.traits` doesn't matter here because it's just splatted in, other than for how quickly it can be splatted.
+The type of `Person.traits` doesn't matter here because it's just splatted in.
 
 Notice how `Person.traits` serves as a placeholder to set default personal values and their types. This allows `Mutable` instances to have their personalizable traits updated after construction, and `Static` instances can have default values for traits that might otherwise be left unspecified.
 
@@ -529,20 +535,41 @@ joe = Object((Person,); Person.traits..., name="Joe", age=45, siblings=3)
 
 **a note**
 
-After a mutable `Object` has been constructed, its property types must remain consistent. However, arbitrary property types can be set during construction. *This applies to overridden types too*. For example, if `joe`'s `age` is set to `45.5`, then it overrides what was an `Int` by default with a floating point number, and `joe`'s type is no longer the same as `amy`'s.
+After a mutable `Object` has been constructed, its property types must remain consistent. However, when *splatting* an object, its types can be overridden by subsequent arguments. For example:
 
-This will usually not cause problems of functionality, but it can cause the functions to be recompiled for different data types.
+```julia
+joe = Object((Person,); Person.traits..., name="Joe", age=45.5, siblings=3)
+```
 
-One can also create objects with the same properties, but in different orders, and these will also cause functions to be recompiled.
-
-Thankfully, in the cases where it actually matters (i.e. lots of repetition), chances are that the objects will be created systematically and will have a single ordering anyway. So it's not a big deal.
-
-It's fun to see though, that although something like ordering of keyword arguments doesn't matter to the programmer, it matters to the computer. That's why `struct`s have a specific ordering, and force the programmer to follow a single ordering. Most of the time it doesn't matter, and `Object`s free the programmer to be so whimsical, but on the occasion when it does matter...
+If `joe`'s `age` is set to `45.5`, then it overrides what was by default an `Int` with a floating point number, and `joe`'s type is no longer the same as `amy`'s. If this can be a problem, use a template instead of splatting (as described above).
 
 ### Design Pattern: Adapters
 
 use ur imaginatino oy
 
+## All the Methods of Copying Traits
+
+We've covered the three methods to copy traits: by splatting, by template, and by prototype inheritance.
+
+For freehand composition, crafting new objects out of existing ones by copying and pasting their features, *splatting* is great.
+
+```julia
+newObj = Object(; obj1..., obj2..., a=1, b=2)
+```
+
+If an object is going to be duplicated many times, it can be considered to be a member of some sort of class of similar objects. In this case, either a `struct` can be defined, or the object can be used for repeated construction as a *template*. 
+
+```julia
+duplicate = obj(a=1, b=2)
+```
+
+If many child objects will incorporate some features of a parent object, but they will simultaneously all have the *same value* (and so replicating the value isn't desirable), this is handled by *prototype inheritance*.
+
+```julia
+child = Object((parent,); a=1, b=2)
+```
+
+Most of the time, you'll just want to compose simple objects by splatting and then replicate them as templates. But occasionally you'll find inheritance useful.
 
 ## Type Tagging for Multiple Dispatch
 
@@ -557,10 +584,11 @@ g(obj::Object{:neg}) = -obj.x^2
 @show g(a), g(b)                # (25, -25)
 ```
 
-This type tag is automatically inherited.
+This type tag is automatically inherited by template or by prototype.
 
 ```julia
-@show g(Object((a,),x=2)), g(Object((b,),x=2))      # (4, -4)
+@show g(a(x=2)), g(b(x=2))                      # (4, -4); template
+@show g(Object((a,),x=2)), g(Object((b,),x=2))  # (4, -4); prototype
 ```
 
 The type tag can also be changed.
@@ -646,13 +674,13 @@ Gets `obj`'s prototype object.
 Unlike JavaScript, an object's prototype cannot be changed (so there's no `setprototype!` function).
 
 ```julia
-    ownpropertynames
-    ownproperties
-    drop
+    ownpropertynames(obj::Object)
+    ownproperties(obj::Object)
+    drop(obj::Object, n::Symbol...)
 ```
 
 
-## Performance Tip
+## Performance Tip for Dynamic Objects
 
 Obviously `Static` will be fastest at runtime and `Dynamic` slowest. Because accessing elements from a `Dynamic` object is type-unstable, calling functions on their values can be slow.
 
