@@ -163,7 +163,7 @@ test1 = Test1('🐢', "Hello")
 obj1 = Object(test1)
 ```
 
-Unfortunately, changes to an `Object`ified mutable struct won't be reflected:
+Note that `obj1` is a copy; changes to an `Object`ified mutable struct won't be reflected:
 
 ```julia
 mutable struct Test2 a; b end
@@ -172,10 +172,10 @@ obj2 = Object(test2)
 test2.a = '🐇'
 obj2.a ≠ test2.a
 ```
-Maybe that can be changed one day, that could be cool idk
 
 `Object`ifying arbitrary composite types is not recursive, for hopefully obvious reasons.
 
+As we see later in the section on iteration, it's easy to splat the `Object` back into the original constructor with `Test1(obj1...)`.
 
 ### Recursive Dictionary Object Construction
 
@@ -216,7 +216,7 @@ and using generators:
 
 ```julia
 obj = Object(a=1, b=2, c=3, d=4, e=5)
-obj[(k for (k,v) ∈ obj if v > 2)]
+obj[(k for k ∈ keys(obj) if obj[k] > 2)]
 ```
 
 and you can drop specific items (this creates a new `Object` with the same prototype, dropping only "own" properties when available; no error if dropping a property which doesn't exist)
@@ -233,20 +233,34 @@ We already saw splatting
 (; obj...)
 ```
 
-This splats into a NamedTuple, good for splatting into keyword arguments of functions. You can also splat into a tuple of (key => value) pairs, good for splatting into dictionaries:
+This splats into a NamedTuple, good for splatting into keyword arguments of functions. 
+
+You can also splat into a tuple of values:
 
 ```julia
 (obj...,)
 ```
 
+This is good for splatting into constructors; for example, if you've created an `Object` based off a `struct`, you can do this:
+
+```julia
+struct MyStruct{T} a::T; b::T, c::T end
+x = MyStruct(1, 2, 3)       # immutable.
+y = Object(x)               # mutable!
+for k ∈ keys(y) y[k]^=2 end # let's square things up a bit
+MyStruct(y...)              # and we're back! (now it can be passed to methods specialized on MyStruct)
+```
+
+(bug: currently, doing this with `Dynamic` objects is NOT a good idea.)
+
+You can check the order of splatting by inspecting `keys(y)`.
+
 You can also loop by key and value
 ```julia
-for (k,v) ∈ obj
+for (k,v) ∈ zip(keys(obj), values(obj))
     println("key $k corresponds to value $v")
 end
 ```
-
-or by `keys(obj)` and `values(obj)`.
 
 ### Destructuring Objects
 
@@ -343,7 +357,7 @@ Of course, you can make the method have global scope too, if desired.
 
 ### Storing Functions
 
-If it's desired for an object to store a function for later retrieval, then store a reference to it with `Ref` and access it with dereferencing syntax `[]`:
+If it's desired for an object to store a function for retrieval, then store a reference to it with `Ref` and access it with dereferencing syntax `[]`:
 
 ```julia
 obj = Object(storedfunc = Ref(x -> x^2))
@@ -353,7 +367,7 @@ f = obj.storedfunc[]            # retrieves the function as-is
 
 **Note**
 
-Because every function has a different type signature, you cannot mutate the member methods of `Mutable` `Object`s. And because `Ref` also carries the referenced object's type signature, you can't mutate references to functions either.
+Because every function has a different type signature, even for `Mutable` objects you cannot mutate member methods. And because `Ref` also carries the referenced object's type signature, you can't mutate references to functions either.
 
 ```julia
 obj.storedfunc[] = x -> x^3     # error
@@ -455,7 +469,7 @@ Understand this, and master the universe.
 
 ### Multiple Inheritance
 
-Strictly speaking, multiple inheritance isn't implemented. But it's easy to splat objects together to compose a new object that takes traits from multiple objects.
+Strictly speaking, multiple inheritance isn't implemented. But it's easy to splat objects together to compose a new object that takes traits from multiple objects. This is more than likely good enough for just about anything.
 
 ```julia
 parent = Object(firstname="Jeanette", lastname="Smith", hobby="Fishing")

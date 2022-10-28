@@ -51,11 +51,14 @@ return new object with properties set by generator
 return new object with keys removed (own keys only; prototype unchanged)
 
     (; obj...)
+
+splat object into a named tuple
+
     (obj...,)
 
-splat object into a named tuple, or into a tuple of pairs
+splat into a tuple of values (useful for splatting into a constructor, e.g. MyStruct(obj...))
 
-    ((k,v) for (k,v) ∈ obj)
+    ((k,v) for (k,v) ∈ zip(keys(obj),values(obj)))
 
 generator to iterate over object's property names and values
 
@@ -132,7 +135,8 @@ Base.propertynames(obj::Object) = (keys(getfield(obj, :store))...,)
 
 Base.keys(obj::Object) = (keys(getfield(obj, :store))...,)
 Base.values(obj::Object) = (values(getfield(obj, :store))...,) # if you don't splat first, then sending values(obj) to NamedTuple in merge() is super slow 
-Base.iterate(obj::Object, itr=zip(keys(obj), values(obj))) = Iterators.peel(itr)
+#Base.iterate(obj::Object, itr=zip(keys(obj), values(obj))) = Iterators.peel(itr) # keys,values
+Base.iterate(obj::Object, itr=values(obj)) = Iterators.peel(itr) # values only!
 Base.merge(nt::NamedTuple, obj::Object) = (; nt..., NamedTuple{keys(obj)}(values(obj))...)
 
 Base.length(obj::Object) = length(keys(getfield(obj, :store)))
