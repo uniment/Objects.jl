@@ -1,5 +1,7 @@
 """
-    Object{[TypeTag]}([objs::Object...] ; [static=s,] [mutable=m,] [prototype=p])
+See also `object`
+
+    Object{[TypeTag]}([objs::Object...] ; [iterable=i,] [static=s,] [mutable=m,] [prototype=p])
 
 
 
@@ -73,7 +75,7 @@ Destructure properties `x`, `y`, and `z` out of `obj`.
 """
 module Internals
 export object, AbstractObject, Object, Undef, hasprops, propsmatch, typematch, drop, getprototype
-export Prop, R, isassigned, getboxtype, StaticType, MutableType, ProtoType, propsmutable, indexablematch
+export Prop, R, isassigned, getboxtype, StaticType, MutableType, ProtoType, propsmutable, indexablematch, getpropertytypes
 
 struct Undef{T} end # type for describing uninitialized values
 Undef(::Type{T}) where T = Undef{T}()
@@ -82,12 +84,15 @@ Undef() = Undef{Any}()
 abstract type Prop{n,T} end # type for describing object property names and types
 prop_type_assembler(nTs::NamedTuple) = Union{(Prop{n,>:T} for (n,T) ∈ zip(keys(nTs),values(nTs)))...}
 
-mutable struct R{X} # my own `Ref` type (to disambiguate from Base `Ref` type)
+mutable struct R{X} # my own `Ref` type (to disambiguate from Base `Ref` type & offer better behaviors)
     x::X
     R()             = new{Any}() # ideally Core.Ref should have this too
     R{X}()  where X = new{X}()
     R(x::X) where X = new{X}(x)
     R{X}(x) where X = new{X}(x)
+    R(::Undef{X}) where X = new{X}()
+    R{Undef{X}}() where X = new{X}()
+    R{Undef{X}}(x) where X = new{X}()
 end
 Base.getindex(r::R) = r.x
 Base.setindex!(r::R, x) = (r.x = x)
@@ -99,6 +104,9 @@ Base.copy(r::R{T}) where T = isassigned(r) ? R{T}(r[]) : R{T}()
 make_mutable(v::T) where T = R{T}(v)
 make_mutable(v::R{T}) where T = v
 make_mutable(::Undef{T}) where T = R{T}()
+make_mutable(T, v) = R{T}(v)
+make_mutable(T, v::Undef{Tv}) where Tv = R{Tv}()
+
 
 equiv(x,y) = x===y
 equiv(y) = Base.Fix2(equiv, y)
@@ -122,23 +130,22 @@ struct Object{UserType, I, PT, PTM, P<:ProtoType, S<:StaticType, M<:MutableType}
         # hygiene: if there are any repeated prototypes, throw error
         reduce((acc,x)->(@assert(!any(y->x===y, acc), "Invalid repeated prototype $x"); (acc...,x)), prototype; init=())            
         # build out property type information
-        muttypes = NamedTuple{keys(mutable)}(map(getboxtype, values(mutable)))
-        protoTypes = foldr(merge, map(get_prop_types, prototype), init=(;))
-        proptypes = (; protoTypes..., NamedTuple{keys(static)}(map(typeof, values(static)))..., muttypes...)
-        new{UserType, I, prop_type_assembler(proptypes), prop_type_assembler(muttypes), P, S, M}(indexable, prototype, static, mutable) 
+        sTypes = getpropertytypes(static)
+        mTypes = getpropertytypes(mutable)
+        protoTypes = merge((;), map(getpropertytypes, prototype)...)
+        propTypes = (; protoTypes..., sTypes..., mTypes...)
+        new{UserType, I, prop_type_assembler(propTypes), prop_type_assembler(mTypes), P, S, M}(indexable, prototype, static, mutable) 
     end #𝓏𝓇
 end
 
-get_prop_types(o::T) where T = begin
-    !ismutable(o) && return NamedTuple{propertynames(o)}(map(n->typeof(getproperty(o, n)), propertynames(o)))
-    NamedTuple{fieldnames(T)}(T.types)
-end
-get_prop_types(o::Object) = begin
+getpropertytypes(o::T) where T = NamedTuple{fieldnames(T)}(T.types)
+getpropertytypes(m::MutableType) = NamedTuple{keys(m)}(map(getboxtype, values(m)))
+getpropertytypes(o::Object) = begin
     static, mutable = getfield(o, :static), getfield(o, :mutable)
-    s = NamedTuple{keys(static)}(map(typeof, values(static)))
-    m = NamedTuple{keys(mutable)}(map(getboxtype, values(mutable)))
-    protoTypes = merge((;), map(get_prop_types, getfield(o, :prototype))...)
-    (; protoTypes..., s...,  m...)
+    s = getpropertytypes(static)
+    m = getpropertytypes(mutable)
+    protoTypes = merge((;), map(getpropertytypes, getfield(o, :prototype))...)
+    merge(protoTypes, s,  m)
 end
 
 hasprops(::AbstractObject{<:Any,<:Any,PT}) where PT = AbstractObject{<:Any,<:Any,>:PT}
@@ -149,9 +156,10 @@ typematch(::AbstractObject{UT,I,PT,PTM}) where {UT,I,PT,PTM} = isbits(UT) ? Abst
 
 _prop_hygiene(static, mutable) = begin
     s, m = NamedTuple(static), NamedTuple(mutable)
-    m = m isa MutableType ? NamedTuple{keys(m)}(map(copy, values(m))) : NamedTuple{keys(m)}(map(make_mutable, values(m)))
+    m = m isa MutableType ? NamedTuple{keys(m)}(map(copy, values(m))) : 
+        NamedTuple{keys(m)}(map(k->R{getpropertytypes(m)[k]}(m[k]), keys(m)))
     skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
-    s = NamedTuple{skeys}(map(Base.Fix1(getindex, s), skeys))
+    s = NamedTuple{skeys, Tuple{map(Base.Fix1(getfield, getpropertytypes(s)), skeys)...}}(map(Base.Fix1(getfield, s), skeys))
     (s, m)
 end
 _prototype_hygiene(p) = (p,)
@@ -188,7 +196,8 @@ Object(args...; kwargs...) = Object{Any}(args...; kwargs...)
         NamedTuple{keys(s)}(map(k->k∈keys(kwargs) ? kwargs[k] : s[k], keys(s)))
     end
     mutable = let m=getfield(o, :mutable)
-        NamedTuple{keys(m)}(map(k->k∈keys(kwargs) ? make_mutable(kwargs[k]) : isassigned(m[k]) ? R{getboxtype(m[k])}(m[k][]) : R{getboxtype(m[k])}(), keys(m)))
+        mT = getpropertytypes(m)
+        NamedTuple{keys(m)}(map(k->k∈keys(kwargs) ? make_mutable(mT[k], kwargs[k]) : isassigned(m[k]) ? R{getboxtype(m[k])}(m[k][]) : R{getboxtype(m[k])}(), keys(m)))
     end
     Object{UT}(o[], static, mutable, getfield(o, :prototype)) #𝓏𝓇
 end
@@ -228,8 +237,10 @@ Base.propertynames(o::AbstractObject) = begin
     props = reduce((acc,x)->(acc...,x...), props)
     props = reduce((acc,x)->x ∈ acc ? acc : (acc...,x), props, init=())
 end
-Base.NamedTuple(o::AbstractObject) = NamedTuple{propertynames(o)}(map(k->getproperty(o,k), propertynames(o)))
-Base.merge(nt::NamedTuple, o::AbstractObject) = merge(nt, NamedTuple(o))
+Base.NamedTuple(o::AbstractObject) = NamedTuple{propertynames(o), Tuple{getpropertytypes(o)...}}(map(k->getproperty(o,k), propertynames(o)))
+Base.merge(o::AbstractObject) = o
+Base.merge(ol::AbstractObject, or::AbstractObject, args...) = merge(typeof(or)(ol, or), args...)
+Base.merge(nt::NamedTuple, o::AbstractObject, args...) = merge(merge(nt, NamedTuple(o)), args...)
 Base.getindex(o::AbstractObject) = getfield(o, :indexable)
 Base.iterate(o::AbstractObject, n) = iterate(o[], n)
 Base.iterate(o::AbstractObject) = iterate(o[])
