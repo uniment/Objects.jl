@@ -21,6 +21,8 @@ using Objects
 
 ## About
 
+`Object` is built to be a catch-all blob to encapsulate associated information, yet to hold that data in a structured manner to maintain high performance.
+
 Instances of `Object` have properties that can be casually and easily created and composed, and then accessed and changed using dot-syntax.
 
 Once an object has been carved into the desired form, it can serve as a "template" for replication to create clones with the same datatypes but with custom values.
@@ -34,16 +36,6 @@ Object-specific methods can be inherited, overridden, and extended. Objects can 
 Composing objects on an ad-hoc basis, instead of architecting classes and hierarchies up-front, can be a very efficient workflow: especially when experimenting on a new project, or when sculpting and customizing complex objects.
 
 It's also just fun. Nobody likes `ERROR: invalid redefinition of constant MyStruct`. (ikik revise.jl)
-
-## Object Storage Types
-
-Three subtypes of object are provided by storage technique: `Dynamic`, `Static`, and `Mutable`. Their external behaviors are identical, except for property-setting flexibility and performance.
-
-- Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
-- Static: maximum performance—after construction, properties cannot be changed.
-- Mutable: happy medium—properties can be changed at any time, but their types cannot change and new ones cannot be added.
-
-If left unspecified, the default is `Mutable`. 
 
 ## Interface
 
@@ -272,7 +264,17 @@ let (; x, y) = obj
 end
 ```
 
-## Dynamic, mutable, and static object types
+## Object Storage Types
+
+Three subtypes of object are provided by storage technique: `Dynamic`, `Static`, and `Mutable`. Their external behaviors are identical, except for property-setting flexibility and performance.
+
+- Dynamic: maximum flexibility—properties can be added or changed at any time, arbitrarily.
+- Static: maximum performance—after construction, properties cannot be changed.
+- Mutable: happy medium—properties can be changed at any time, but their types cannot change and new ones cannot be added.
+
+If left unspecified, the default is `Mutable`. 
+
+### Dynamic, mutable, and static object types
 
 For `Mutable` objects, you can't change property types or add new ones after object construction:
 
@@ -412,6 +414,15 @@ So notice that unlike the other construction techniques, using a template is muc
 
 See bottom for some benchmarking.
 
+### Type Assertion
+
+Once you've composed a template, you can use it for type assertions to ensure functions are receiving that specific data structure. The type of any `Object` encodes all the available information regarding the property types and their ordering, so a type assertion can be performed like so:
+
+```julia
+function myfunc(a::typeof(Template)) 
+    # do stuff...
+end
+```
 
 ## Prototype Inheritance
 
@@ -794,7 +805,7 @@ Template = Object(Mutable, a=0.0, b=0, c='a')
 
 The performance when constructing from a template is maintained even if the arguments are out of order from their original creation (try it).
 
-## Pro/Con
+## Cons ... or maybe an idea
 
 Using object templates as a stand-in for a `struct` is nice because templates provide default values, and you can fill in properties out of order from how they were originally defined. 
 
@@ -808,7 +819,42 @@ Unless... maybe I can think of something? `NamedTuples` provide the ability to c
 
 Object{UT}(OT, (a=Number, b=Float64, c=Any, d=String); a=1, b=2, c=3, d="hi") 🤔
 
-Can make it optional to specify types, and anything that's not specified is assumed to be a concrete type.
+Can make it optional to specify types, and values. Any type that's not specified is assumed to be the concrete type of the given value; any value not specified takes on `undef`. And any value that disagrees with the given type causes an error.
+
+Can possibly do the same thing when throwing an arbitrary object into `Object`; `dump` its constructor and inspect the types of its properties.
+
+**HOLY FURK**
+
+Not only can you make `NamedTuple`s have entries with abstract values; you can do the same thing with `Ref` too!
+
+```julia
+x = NamedTuple{(:a,:b), Tuple{Any,Any}}((Ref{Any}(1),Ref{Any}(2)))
+
+x.a[] = "what"
+x.a[] = x->x^2
+x.a[] = 3.14
+```
+
+BOOM
+
+Possible...
+```julia
+Template = Object(MyStruct[, template::MyStruct][; kwargs...])
+```
+^ take all fields of MyStruct, and use that to create a template `ObjConstructor` which adopts the same types including abstract types and parametric types
+
+```julia
+Template = Object((a=Int, b=Number)[; kwargs...])
+Template = Object(NamedTuple{NTuple, Tuple{<:Type}}(Tuple)[; kwargs...])
+```
+
+How to mimic parametric types? e.g. `struct MyStruct{T} a::T; b::T end`
+
+Construct objects with abstract types: `obj = Template(...)`; then to convert to concrete types, splat `Object(; obj...)`
+
+Is there a way to implement inner constructors, and to initialize undef properties? This would be very useful for properties that are created by method calls... otherwise I need to use `Dynamic` which sucks.
+
+Also: add numbered access to Objects. It's sometimes useful when args splatting. And definitely use ordered dicts.
 
 
 zr

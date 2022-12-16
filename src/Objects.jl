@@ -1,16 +1,10 @@
 module Objects
 
-export Object, Prototype, Dynamic, Mutable, Static, getprototype, ownpropertynames, ownproperties, drop
-
-abstract type StorageType end
+export object, Object, Undef, hasprops, propsmatch, typematch, drop, getprototype
 
 # core `Object` type:
 include("object.jl")
+using .Internals
 
-# object storage types
-include("storage.jl")
-
-const DEFAULT_STORAGE_TYPE = Mutable
-
+#𝓏𝓇
 end
-#zr

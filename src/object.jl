@@ -1,4 +1,9 @@
 """
+    Object{[TypeTag]}([objs::Object...] ; [static=s,] [mutable=m,] [prototype=p])
+
+
+
+
     Object{[TypeTag]}([StorageType] [; kwargs...])
 
 Create a structured `Object` with properties specified by keyword arguments `kwargs`. Object type can be specified by `StorageType`, and additional type parameters can be specified by `TypeTag`. Later properties override earlier ones.
@@ -66,6 +71,239 @@ generator to iterate over object's property names and values
 
 Destructure properties `x`, `y`, and `z` out of `obj`.
 """
+module Internals
+export object, AbstractObject, Object, Undef, hasprops, propsmatch, typematch, drop, getprototype
+export Prop, R, isassigned, getboxtype, StaticType, MutableType, ProtoType, propsmutable, indexablematch
+
+struct Undef{T} end # type for describing uninitialized values
+Undef(::Type{T}) where T = Undef{T}()
+Undef() = Undef{Any}()
+
+abstract type Prop{n,T} end # type for describing object property names and types
+prop_type_assembler(nTs::NamedTuple) = Union{(Prop{n,>:T} for (n,T) ∈ zip(keys(nTs),values(nTs)))...}
+
+mutable struct R{X} # my own `Ref` type (to disambiguate from Base `Ref` type)
+    x::X
+    R()             = new{Any}() # ideally Core.Ref should have this too
+    R{X}()  where X = new{X}()
+    R(x::X) where X = new{X}(x)
+    R{X}(x) where X = new{X}(x)
+end
+Base.getindex(r::R) = r.x
+Base.setindex!(r::R, x) = (r.x = x)
+Base.:(==)(a::R{T1}, b::R{T2}) where {T1,T2} = isassigned(a) && isassigned(b) && a[] == b[] || (!isassigned(a) && !isassigned(b) && T1 == T2)
+isassigned(r::R) = isdefined(r, :x)
+getboxtype(::R{T}) where T = T
+Base.copy(r::R{T}) where T = isassigned(r) ? R{T}(r[]) : R{T}()
+
+make_mutable(v::T) where T = R{T}(v)
+make_mutable(v::R{T}) where T = v
+make_mutable(::Undef{T}) where T = R{T}()
+
+equiv(x,y) = x===y
+equiv(y) = Base.Fix2(equiv, y)
+
+const StaticType = NamedTuple
+const MutableType = NamedTuple{<:Any,<:NTuple{N,R} where N}
+const ProtoType = Tuple
+
+abstract type AbstractObject{UserType, I, PT, PTM} end
+
+struct Object{UserType, I, PT, PTM, P<:ProtoType, S<:StaticType, M<:MutableType} <: AbstractObject{UserType, I, PT, PTM}
+    indexable::I
+    prototype::P 
+    static::S    
+    mutable::M   
+
+    Object{UserType}(indexable::I, prototype::P, static::S, mutable::M) where 
+    {UserType, I, P<:ProtoType, S<:StaticType, M<:MutableType} = begin
+        # hygiene: if mutable has properties in static, throw error
+        for k ∈ keys(static) @assert k∉keys(mutable) "Repeated property $k in both static and mutable collections disallowed" end
+        # hygiene: if there are any repeated prototypes, throw error
+        reduce((acc,x)->(@assert(!any(y->x===y, acc), "Invalid repeated prototype $x"); (acc...,x)), prototype; init=())            
+        # build out property type information
+        muttypes = NamedTuple{keys(mutable)}(map(getboxtype, values(mutable)))
+        protoTypes = foldr(merge, map(get_prop_types, prototype), init=(;))
+        proptypes = (; protoTypes..., NamedTuple{keys(static)}(map(typeof, values(static)))..., muttypes...)
+        new{UserType, I, prop_type_assembler(proptypes), prop_type_assembler(muttypes), P, S, M}(indexable, prototype, static, mutable) 
+    end #𝓏𝓇
+end
+
+get_prop_types(o::T) where T = begin
+    !ismutable(o) && return NamedTuple{propertynames(o)}(map(n->typeof(getproperty(o, n)), propertynames(o)))
+    NamedTuple{fieldnames(T)}(T.types)
+end
+get_prop_types(o::Object) = begin
+    static, mutable = getfield(o, :static), getfield(o, :mutable)
+    s = NamedTuple{keys(static)}(map(typeof, values(static)))
+    m = NamedTuple{keys(mutable)}(map(getboxtype, values(mutable)))
+    protoTypes = merge((;), map(get_prop_types, getfield(o, :prototype))...)
+    (; protoTypes..., s...,  m...)
+end
+
+hasprops(::AbstractObject{<:Any,<:Any,PT}) where PT = AbstractObject{<:Any,<:Any,>:PT}
+propsmutable(::AbstractObject{<:Any,<:Any,<:Any,PTM}) where PTM = AbstractObject{<:Any,<:Any,<:Any,>:PTM}
+propsmatch(::AbstractObject{<:Any,<:Any,PT,PTM}) where {PT,PTM} = AbstractObject{<:Any,<:Any,>:PT,>:PTM} 
+indexablematch(::AbstractObject{<:Any,I}) where {I} = AbstractObject{<:Any,<:I}
+typematch(::AbstractObject{UT,I,PT,PTM}) where {UT,I,PT,PTM} = isbits(UT) ? AbstractObject{UT,<:I,>:PT,>:PTM} : AbstractObject{<:UT,<:I,>:PT,>:PTM}
+
+_prop_hygiene(static, mutable) = begin
+    s, m = NamedTuple(static), NamedTuple(mutable)
+    m = m isa MutableType ? NamedTuple{keys(m)}(map(copy, values(m))) : NamedTuple{keys(m)}(map(make_mutable, values(m)))
+    skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
+    s = NamedTuple{skeys}(map(Base.Fix1(getindex, s), skeys))
+    (s, m)
+end
+_prototype_hygiene(p) = (p,)
+_prototype_hygiene(p::ProtoType) = foldr((x,acc)->any(equiv(x), acc) ? acc : (x, acc...), p; init=())
+_merge_objects(objl::Object{UTL}, objr::Object{UTR}) where {UTL,UTR} = begin
+    ia, ib = getfield(objl, :indexable),   getfield(objr, :indexable)
+    sa, sb = getfield(objl, :static),      getfield(objr, :static)
+    ma, mb = getfield(objl, :mutable),     getfield(objr, :mutable)
+    pa, pb = getfield(objl, :prototype),   getfield(objr, :prototype)
+    indexable   = isnothing(ib) ? ia : ib
+    prototype   = _prototype_hygiene((pa..., pb...))
+    s           = (; sa..., sb...)
+    m           = (; ma..., mb...)
+    static, mutable = _prop_hygiene(s, m)
+    Object{UTR}(indexable, prototype, static, mutable)
+end
+
+Object{UT}(; indexable=nothing, prototype=(), static=(;), mutable=(;)) where {UT} = begin
+    Object{UT}(indexable, _prototype_hygiene(prototype), _prop_hygiene(static, mutable)...)
+end
+Object{UT}(objl::Object; indexable=nothing, prototype=(), static=(;), mutable=(;)) where {UT} = begin
+    objr = Object{UT}(indexable, _prototype_hygiene(prototype), _prop_hygiene(static, mutable)...)
+    _merge_objects(objl, objr)
+end #𝓏𝓇
+Object{UT}(objl::Object, objr::Object, objs::Object...; indexable=nothing, prototype=(), static=(;), mutable=(;)) where {UT} = begin
+    obj = _merge_objects(objl, objr)
+    Object{UT}(obj, objs...; indexable, prototype, static, mutable)
+end #𝓏𝓇
+Object{UT}(d::AbstractDict{Symbol}) where UT = Object{UT}(mutable = NamedTuple{(keys(d)...,)}(map(v->v isa AbstractDict{Symbol} ? Object{UT}(v) : v, values(d))))
+Object(args...; kwargs...) = Object{Any}(args...; kwargs...)
+(o::Object{UT})(; kwargs...) where {UT} = begin
+    @assert all(Base.Fix2(∈, propertynames(o)), keys(kwargs)) "Argument not in template"
+    static = let s=getfield(o, :static)
+        NamedTuple{keys(s)}(map(k->k∈keys(kwargs) ? kwargs[k] : s[k], keys(s)))
+    end
+    mutable = let m=getfield(o, :mutable)
+        NamedTuple{keys(m)}(map(k->k∈keys(kwargs) ? make_mutable(kwargs[k]) : isassigned(m[k]) ? R{getboxtype(m[k])}(m[k][]) : R{getboxtype(m[k])}(), keys(m)))
+    end
+    Object{UT}(o[], static, mutable, getfield(o, :prototype)) #𝓏𝓇
+end
+
+object(; var"##ib##"=nothing, kwargs...) = Object(indexable = var"##ib##", mutable = kwargs)
+object(arg; var"##ib##"=nothing, kwargs...) = Object(indexable = var"##ib##", static = (; arg...), mutable = kwargs)
+object(arg1, arg2, args...; kwargs...) = object((; arg1..., arg2...), args...; kwargs...)
+struct IndexableBuilder{I} i::I end
+Base.getindex(::typeof(object)) = IndexableBuilder(Dict())
+Base.getindex(::typeof(object), d) = IndexableBuilder(d)
+(ib::IndexableBuilder)(args...; kwargs...) = object(args...; kwargs..., var"##ib##"=ib.i)
+
+struct Method{F,X<:AbstractObject} f::F; x::X end
+(f::Method)(args...; kwargs...) = f.f(f.x, args...; kwargs...)
+Base.show(io::IO, f::Method{F}) where {F} = 
+    print(io, "$(f.f)(::AbstractObject, _...; _...)")
+
+# Here's the magic
+_getpropnested(o::AbstractObject, s::Symbol) = getproperty(o, s, true)
+_getpropnested(o, s::Symbol) = getfield(o, s)
+Base.getproperty(o::AbstractObject, s::Symbol, nested=false) = begin
+    val = 
+        if s ∈ propertynames(getfield(o, :mutable)) getproperty(getfield(o, :mutable), s)
+        elseif s ∈ propertynames(getfield(o, :static)) getproperty(getfield(o, :static), s)[]
+        else _getpropnested(getfield(o, :prototype)[findlast(p -> s ∈ propertynames(p), getfield(o, :prototype))], s)
+        end
+    val = val isa R ? val[] : val
+    val isa Function && !nested && return Method(val, o)
+    val
+end #𝓏𝓇
+Base.setproperty!(o::AbstractObject, s::Symbol, x) = begin
+    s ∈ propertynames(getfield(o, :static)) && setproperty!(getfield(o, :static), s, x) # throw a nice error
+    getproperty(getfield(o, :mutable), s)[] = x
+end
+Base.propertynames(o::AbstractObject) = begin
+    props = (map(propertynames, (getfield(o, :static), getfield(o, :mutable)))..., map(propertynames, getfield(o, :prototype))...)
+    props = reduce((acc,x)->(acc...,x...), props)
+    props = reduce((acc,x)->x ∈ acc ? acc : (acc...,x), props, init=())
+end
+Base.NamedTuple(o::AbstractObject) = NamedTuple{propertynames(o)}(map(k->getproperty(o,k), propertynames(o)))
+Base.merge(nt::NamedTuple, o::AbstractObject) = merge(nt, NamedTuple(o))
+Base.getindex(o::AbstractObject) = getfield(o, :indexable)
+Base.iterate(o::AbstractObject, n) = iterate(o[], n)
+Base.iterate(o::AbstractObject) = iterate(o[])
+Base.keys(o::AbstractObject) = keys(o[])
+Base.values(o::AbstractObject) = values(o[])
+Base.getindex(o::AbstractObject, k...) = getindex(o[], k...)
+Base.setindex!(o::AbstractObject, x, k...) = setindex!(o[], x, k...)
+Base.length(o::AbstractObject) = length(o[])
+Base.size(o::AbstractObject) = size(o[])
+Base.axes(o::AbstractObject) = axes(o[])
+Base.firstindex(o::AbstractObject) = firstindex(o[])
+Base.lastindex(o::AbstractObject) = lastindex(o[])
+Base.:(==)(a::Object{UT1}, b::Object{UT2}) where {UT1,UT2} = begin
+    UT1 == UT2 && a[] == b[] &&
+    getfield(a, :static) == getfield(b, :static) &&
+    getfield(a, :mutable) == getfield(b, :mutable) && 
+    getfield(a, :prototype) == getfield(b, :prototype)
+end
+Base.copy(o::AbstractObject) = o()
+
+
+Base.show(io::IO, o::Object{UT}) where UT = begin
+    istr = replace("$(getfield(o, :indexable))", "\n" => "\n    ")
+    s = getfield(o, :static)
+    sstr = isempty(s) ? "(;)" : replace("$s", "\n" => "\n    ")
+    mstr = replace("$(getfield(o, :mutable))", "\n" => "\n    ")
+    pstr = replace("$(getfield(o, :prototype))", "\n" => "\n    ")
+    print(io, "Object{$UT}(\n    indexable = $istr\n    static    = $sstr\n    mutable   = $mstr\n    prototype = $pstr\n)")
+end
+Base.show(io::IO, mut::MutableType) = begin
+    itr = zip(keys(mut), map(getboxtype, values(mut)), map(v->isassigned(v) ? v[] : "#undef", values(mut)))
+    itr = (" $k"*(typeof(v) ≠ T ? "::$T" : "")*" = $v," for (k, T, v) ∈ itr)
+    print(io, "(;" * join(itr)[1:end-1] * ")")
+end
+
+
+drop(o::Object{UT}, props::Val{P}) where {UT,P} = begin
+    args = P isa Symbol ? (P,) : P
+    @assert args isa NTuple{N,Symbol} where N "Cannot drop non-Symbol identifiers"
+    i = getfield(o, :indexable)
+    s = getfield(o, :static)
+    m = getfield(o, :mutable)
+    p = getfield(o, :prototype)
+    @assert all(k->k∈keys(m) || k∈keys(s), args) "Cannot drop property"
+
+    ks = filter(k->k∉args, keys(s))
+    km = filter(k->k∉args, keys(m))
+    Object{UT}(indexable = i, static = NamedTuple{ks}(map(Base.Fix1(getindex, s), ks)), mutable = NamedTuple{km}(map(Base.Fix1(getindex, m), km)), prototype=p)
+end
+getprototype(o::AbstractObject) = getfield(o, :prototype)
+staticpropertynames(o::AbstractObject) = propertynames(getfield(o, :static))
+mutablepropertynames(o::AbstractObject) = propertynames(getfield(o, :mutable))
+ownpropertynames(o::AbstractObject) = (staticpropertynames(o)..., mutablepropertynames(o)...)
+
+
+end
+
+
+# Object-to-Dictionary conversions
+#Base.convert(T::Type{<:AbstractDict}, obj::Object) = begin
+#    store = getfield(obj, :store); props = _getprops(store)
+#    isnothing(_getproto(store)) ? T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))) :
+#    merge(convert(T, _getproto(store)), T(k=>v isa Object ? convert(T, v) : v for (k,v) ∈ zip(keys(props), values(props))))
+#end
+
+
+
+
+
+
+
+#=
+
+
 struct Object{UserType, StorageType}
     store::StorageType
 end
@@ -125,9 +363,12 @@ Object{newUT}(proto::Tuple{Object{UT,OT}}; kwargs...) where {newUT,UT,OT} = Obje
 Object(proto::Tuple{Object{UT,OT}}; kwargs...) where {UT,OT} = Object{UT}(_constructorof(OT)(first(proto), kwargs))
 
 # interface
+struct Method{F,UT,OT} f::F; x::Object{UT,OT} end
+(f::Method)(ar...; kw...) = f.f(f.x, ar...; kw...)
+Base.show(io::IO, f::Method{F,UT,OT}) where {F,UT,OT} = print(io, "$(f.f)(::Object{$UT, $(nameof(OT))}, _...; _...)")
 Base.getproperty(obj::Object, s::Symbol) = begin
     v = getfield(obj, :store)[s]
-    v isa Function && return (a...; k...) -> v(obj, a...; k...)
+    v isa Function && return Method(v, obj)
     v
 end
 Base.setproperty!(obj::Object, s::Symbol, v) = (getfield(obj, :store)[s] = v)
@@ -200,3 +441,4 @@ Returns a generator for splatting `obj`'s own properties.
 ownproperties(obj::Object) = _ownprops_itr(getfield(obj, :store))
 
 #zr
+=#
