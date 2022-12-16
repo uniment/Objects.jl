@@ -349,7 +349,7 @@ end #𝓏𝓇
 Base.setproperty!(o::AbstractObject, s::Symbol, x) = begin
     if s ∈ propertynames(getfield(o, :static))  throw("Cannot set static property `$s`")
     elseif s ∈ propertynames(getfield(o, :mutable))  getproperty(getfield(o, :mutable), s)[] = x
-    elseif any(p -> s ∈ propertynames(p), getfield(o, :prototype))  throw("Cannot set prototype's property `$s`")
+    elseif any(p -> s ∈ _getpropnamesnested(p), getfield(o, :prototype))  throw("Cannot set prototype's property `$s`")
     elseif o isa DynamicObject  setindex!(getfield(o[], :d), x, s)
     else throw("Property `$s` not found") end
     x
