@@ -1,4 +1,111 @@
+Create new function for dynamic type checks
+
+proptypes(o::Object) -> returns Union{} of all property types, including those of dynamic objects
+e.g. (if proptypes(my_obj) <: proptypes(template_type))
+returns Prop{>:Union{Prop{:a,Int}, Prop{:b, Number}}} etc.
+
+change indexable to dynamic
+
+Change default constructor to use kwargs only, and use var"#stuff#" to make hard to access
+Make default constructor as easy to use as `object`, so that it's not necessary anymore
+
+Object[dynprops]((proto1,), staticprops; mutableprops...)
+
+
+
+
+
+
+
+
+
+
+
+
 # Ideas to explore
+
+
+
+Macros for generating types?
+
+TypeScript has: @type, @keyof, 
+
+
+For annotating property names and types:
+struct Pr{name,T} end
+Pr{n}(::Type{T}) where {n,T} = Pr{n,T}()
+x = Foo{Union{Pr{:a,Int}, Pr{:b,Float64}}}()
+proptype(::Foo{T}) where T = T
+y = Foo{Union{Pr{:a,Int}, Pr{:b,Float64}, Pr{:c,String}}}()
+y isa Foo{>:proptype(x)}
+foowithprops(::Foo{T}) where T = Foo{>:T}
+y isa foowithprops(x)
+y isa foo
+foowithmutable()
+
+For annotating object param types:
+@object(a::Number=5, b::Float64=2)
+
+
+object(UserType, (a=1,b=2); c=3, d=4)
+Object{UT}(objs::Object...; prototype=nothing, static=nothing, mutable=nothing, dynamic=nothing)
+
+
+
+object(:static; props...) # :static, :mutable, or :dynamic; default mutable
+object((a=1, b=2); c=3, d=4)
+
+myObject(a=1, b=2, c=3, d=4) # construct a fresh object, constrained by old object
+
+Add type-parameterization that reflects the variable names and types
+
+
+
+
+- Store prototype as `var"#prototype#"`
+- Make objects actually dynamic; and only static or mutable for properties that were set at construction time
+-  (this allows any object to be molded like clay, and then used as a template for faster clones.)
+- How do we decide which items should be static vs mutable?
+- How about numbered indices? Should we store a tuple? Or maybe an array?
+- Symbol indices should work like dot-access.
+- How about string indices?
+
+Every object has its:
+- Prototype (var"#prototype#")
+- Static part (NamedTuple var"#static#")
+- Mutable part (Ref NamedTuple var"#mutable#")
+- Dynamic part (var"#dynamic#")
+
+Object constructor:
+Object{UT}(prototype, static::NamedTuple, mutable::NamedTuple, dynamic::blah)
+
+
+object function:
+object(; kwargs...)
+
+
+
+Some macros for inspecting objects
+@inspect obj
+@inspect obj.prop
+
+remember to add equality comparison
+also: approx comparison?? (to see if two objects implement the same properties of the same types)
+
+
+Maybe:
+obj = Object(
+    a=1,
+    b=2
+)
+# a and b are static? or mutable?
+
+obj.c = 3 # .c is dynamic
+
+obj() # creates a new object w/ .a, .b, and .c all mutable? static?
+
+
+
 
 - Use an ordered dict for Dynamic object type? YES. IMPLEMENT THIS. check OrderedCollections.jl
 - allow Dynamic, Static, and Mutable to be AbstractTypes instead of structs (to reduce interference with other packages), since currently the user never interacts with these data structures directly?
