@@ -1,6 +1,6 @@
 module Internals
 export object, AbstractObject, Object, Undef, hasprops, propsmatch, typematch, drop, getprototypes, property_type_assembler, getpropertytypes
-export Prop, R, isassigned, getreftype, StaticStorage, MutableStorage, ProtoType, propsmutable, indexablematch, DynamicObject, DynamicStorage, Method
+export Prop, R, isassigned, getreftype, StaticStorage, MutableStorage, ProtoType, propsmutable, dynamicmatch, DynamicObject, DynamicStorage, Method
 
 """```
     Undef(::Type{T}) where T
@@ -34,7 +34,7 @@ Example:
 ```
     my_obj isa Object{<:Any, <:Any, >:property_type_assembler((a=String, b=Number))}
 ```"""
-property_type_assembler(nTs::NamedTuple) = Union{(Prop{n,>:T} for (n,T) ∈ zip(keys(nTs),values(nTs)))...}
+property_type_assembler(nTs::NamedTuple) = Union{(Prop{n,>:T} for (n,T) ∈ zip(keys(nTs), values(nTs)))...}
 property_type_assembler(; kw...) = property_type_assembler(NamedTuple(kw))
 
 """```
@@ -101,17 +101,39 @@ Base.show(io::IO, mut::MutableStorage) = begin # necessary because of R type and
 end
 Base.copy(ms::MutableStorage) = typeof(ms)(map(copy, ms))
 
-abstract type AbstractObject{TypeTag, I, PT, PTM} end
+struct DynamicStorage{T} 
+    d::Dict{Symbol,T} 
+    DynamicStorage{T}(d::Dict{Symbol, T}) where T = new{T}(d)
+end
+DynamicStorage(d::DynamicStorage) = d
+DynamicStorage{T}(d) where T = DynamicStorage{T}(Dict{Symbol,T}(d))
+DynamicStorage{T}(; kwargs...) where T = DynamicStorage{T}(NamedTuple(kwargs))
+DynamicStorage(d) = DynamicStorage{Any}(d)
+DynamicStorage(; kwargs...) = DynamicStorage(NamedTuple(kwargs))
+DynamicStorage(p::Pair...) = DynamicStorage(; p...)
+Base.getindex(d::DynamicStorage, k::Symbol) = d.d[k]
+Base.setindex(d::DynamicStorage, x, k::Symbol) = (d.d[k] = x;)
+Base.keys(d::DynamicStorage) = keys(d.d)
+Base.values(d::DynamicStorage) = values(d.d)
+Base.copy(d::DynamicStorage) = typeof(d)(copy(d.d))
+Base.merge(d::DynamicStorage) = d
+Base.merge(dl::DynamicStorage{DL}, dr::DynamicStorage{DR}, d...) where {DL,DR} = merge(DynamicStorage{typejoin(DL,DR)}(merge(dl.d, dr.d)), d...)
+#Base.show(io::IO, d::DynamicStorage{T}) where T = print(io, "Objects.DynamicStorage{$T}(" * join(("$k = $v" for (k,v) ∈ zip(keys(d.d), values(d.d))), ", ") * ")")
+
+abstract type AbstractObject{TypeTag, D, PT, PTM} end
+const DynamicObject = AbstractObject{<:Any, <:DynamicStorage}
+
+DynamicStorage{T}(d::Union{NamedTuple, AbstractObject, Dict}) where T = DynamicStorage{T}(Dict{Symbol, T}((Symbol(k),v) for (k,v) ∈ zip(keys(d), values(d))))
 
 
 """
 See also `object`, which is a more convenient `Object` builder for simple `Object`s.
 ```
-    o = Object{[TypeTag]}([objs::Object...] ; [indexable,] [prototype,] [static,] [mutable])
+    o = Object{[TypeTag]}([objs::Object...] ; [dynamic,] [prototype,] [static,] [mutable])
 ```
 Construct an `Object` with optional type annotation `TypeTag`.
 
-`indexable` can be any object which is ideally (but not necessarily) accessible by index. To access index `i` of `indexable`, use `o[i]`. To access `indexable` itself, use `o[]`.
+`dynamic` can be any object which is ideally (but not necessarily) accessible by index. To access index `i` of `dynamic`, use `o[i]`. To access `dynamic` itself, use `o[]`.
 
 `prototype` can be any object, or a `Tuple` of objects, that the `Object` will inherit properties from. If a property is not present in the object's own properties, then a search is made of its prototype(s).
 
@@ -129,7 +151,7 @@ Examples:
 
     o2 = Object(static=(a=0,))
 
-    o3 = Object(indexable=[1,2,3], prototype=(o1,o2), mutable=(c=5,))
+    o3 = Object(dynamic=[1,2,3], prototype=(o1,o2), mutable=(c=5,))
     o3[2]       # 2 (index read)
     o3[2] = 6   # ok (index write)
     o3[]        # [1, 6, 3]
@@ -159,16 +181,17 @@ Additionally, every `Object` is callable, serving as a template to construct a r
 The type annotation `TypeTag` is optional, and can be used for dispatch (as a form of self-type-identification for any method which respects it). The interface of an `Object` can be tested using `hasprops`, `propsmatch`, or `typematch`. 
 
 See also: `object`, `Undef`, `hasprops`, `propsmatch`, `typematch`."""
-struct Object{TypeTag, I, PT, PTM, P<:ProtoType, S<:StaticStorage, M<:MutableStorage} <: AbstractObject{TypeTag, I, PT, PTM}
-    indexable::I
+struct Object{TypeTag, D, PT, PTM, P<:ProtoType, S<:StaticStorage, M<:MutableStorage} <: AbstractObject{TypeTag, D, PT, PTM}
+    dynamic::D
     prototype::P 
     static::S    
     mutable::M   
 
-    Object{TypeTag}(indexable::I, prototype::P, static::S, mutable::M) where 
-    {TypeTag, I, P<:ProtoType, S<:StaticStorage, M<:MutableStorage} = begin
-        # hygiene: if mutable has properties in static, throw error
+    Object{TypeTag}(dynamic::D, prototype::P, static::S, mutable::M) where 
+    {TypeTag, D<:Union{Nothing,DynamicStorage}, P<:ProtoType, S<:StaticStorage, M<:MutableStorage} = begin
+        # hygiene: if mutable has properties in static, or if dynamic has properties in either, throw error
         for k ∈ keys(static) @assert k∉keys(mutable) "Repeated property `$k` in both static and mutable collections disallowed" end
+        !isnothing(dynamic) && for k ∈ keys(dynamic) @assert k∉keys(mutable) && k∉keys(static) "Repeated property `$k` in dynamic collection disallowed" end
         # hygiene: if there are any repeated prototypes, throw error
         reduce((acc,x)->(@assert(!any(equiv(x), acc), "Invalid repeated prototype `$x`"); (acc...,x)), prototype; init=())            
         # build out property type information
@@ -176,15 +199,19 @@ struct Object{TypeTag, I, PT, PTM, P<:ProtoType, S<:StaticStorage, M<:MutableSto
         mTypes = getpropertytypes(mutable)
         protoTypes = merge((;), map(getpropertytypes, prototype)...)
         propTypes = (; protoTypes..., sTypes..., mTypes...)
-        new{TypeTag, I, property_type_assembler(propTypes), property_type_assembler(mTypes), P, S, M}(indexable, prototype, static, mutable) 
+        new{TypeTag, D, property_type_assembler(propTypes), property_type_assembler(mTypes), P, S, M}(dynamic, prototype, static, mutable) 
     end #𝓏𝓇
 end
 
 """```
     getpropertytypes(o)
 ```
-Retrieves the property names and types of an object `o` and returns them in a `NamedTuple`."""
-getpropertytypes(o::T) where T = NamedTuple{fieldnames(T)}(T.types)
+Retrieves the property names and types of an object `o` and returns them in a `NamedTuple`. Note that the properties must be fields of the object's type. When called on an `Object`, returns *only* non-dynamic property types."""
+getpropertytypes(o::T) where T = NamedTuple{fieldnames(T)}(T.types) 
+
+#let pns=Tuple(propertynames(o)), pts=NamedTuple{fieldnames(T)}(T.types)
+#    NamedTuple{pns}(map(Base.Fix1(getfield, pts), pns))
+#end
 getpropertytypes(m::MutableStorage) = NamedTuple{keys(m)}(map(getreftype, values(m)))
 getpropertytypes(o::Object) = begin
     static, mutable = getfield(o, :static), getfield(o, :mutable)
@@ -201,7 +228,7 @@ Returns a `NamedTuple` of the properties and values of object `o`, with property
 namedtuple(o::NamedTuple) = o
 namedtuple(o::T) where T = let pns = Tuple(propertynames(o)), pts=getpropertytypes(o)
     #NamedTuple{fieldnames(T), Tuple{T.types...}}(map(Base.Fix1(getfield, o), fieldnames(T)))
-    NamedTuple{pns, Tuple{map(Base.Fix1(getindex, pts), pns)...}}(map(Base.Fix1(getproperty, o), pns))
+    NamedTuple{pns, Tuple{map(Base.Fix1(getfield, pts), pns)...}}(map(Base.Fix1(getproperty, o), pns))
 end
 
 """```
@@ -235,53 +262,89 @@ Example:
 See also: `hasprops`, `propsmutable`, `typematch`
 """
 propsmatch(::AbstractObject{<:Any,<:Any,PT,PTM}) where {PT,PTM} = AbstractObject{<:Any,<:Any,>:PT,>:PTM} 
-indexablematch(::AbstractObject{<:Any,I}) where {I} = AbstractObject{<:Any,<:I}
+dynamicmatch(::AbstractObject{<:Any,D}) where {D} = AbstractObject{<:Any,<:D}
 """```
     typematch(o::AbstractObject)
 ```
-Construct a type which tests for `Object`s that satisfy `propsmatch` and with satisfying `indexable` type and `TypeTag`."""
-typematch(::AbstractObject{TypeTag,I,PT,PTM}) where {TypeTag,I,PT,PTM} = 
-    isbits(TypeTag) ? AbstractObject{TypeTag,<:I,>:PT,>:PTM} : AbstractObject{<:TypeTag,<:I,>:PT,>:PTM}
+Construct a type which tests for `Object`s that satisfy `propsmatch` and with satisfying `dynamic` type and `TypeTag`."""
+typematch(::AbstractObject{TypeTag,D,PT,PTM}) where {TypeTag,D,PT,PTM} = 
+    isbits(TypeTag) ? AbstractObject{TypeTag,<:D,>:PT,>:PTM} : AbstractObject{<:TypeTag,<:D,>:PT,>:PTM}
 
-"_prop_hygiene(static, mutable) : assert correct types, copy references, and eliminate overlap."
-_prop_hygiene(static, mutable) = begin
+"_prop_hygiene(dynamic, static, mutable) : assert correct types, copy references, and eliminate overlap."
+_prop_hygiene(d::Nothing, static, mutable) = (d, _stat_mut_hygiene(static, mutable)...)
+_prop_hygiene(dynamic, static, mutable) = begin
+    s, m = _stat_mut_hygiene(static, mutable)
+    d = let dyn = DynamicStorage(dynamic)
+        dkeys = Tuple(filter(k->k ∉ keys(m) && k ∉ keys(s), keys(dyn)))
+        DynamicStorage(map(k->k=>dyn[k], dkeys))
+    end
+    (d, s, m)
+end
+_stat_mut_hygiene(static, mutable) = begin
     s, m = NamedTuple(static), _mutable_hygiene(NamedTuple(mutable))
     skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
     s = NamedTuple{skeys, Tuple{map(Base.Fix1(getfield, getpropertytypes(s)), skeys)...}}(map(Base.Fix1(getfield, s), skeys))
     (s, m)
 end
+# This would've been preferred but it complains about the lambdas.
+#= @generated _prop_hygiene(dynamic::D, static, mutable) where D = begin
+    if D <: Nothing;  dynhygiene = :dynamic
+    else dynhygiene = quote
+        let dyn = DynamicStorage(dynamic)
+            dkeys = Tuple(filter(k->k ∉ keys(m) && k ∉ keys(s), keys(dyn)))
+            DynamicStorage(map(k->k=>dyn[k], dkeys))
+        end
+    end end
+    quote
+        s, m = NamedTuple(static), _mutable_hygiene(NamedTuple(mutable))
+        skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
+        s = NamedTuple{skeys, Tuple{map(Base.Fix1(getfield, getpropertytypes(s)), skeys)...}}(map(Base.Fix1(getfield, s), skeys))
+        d = $dynhygiene 
+        (d, s, m)
+    end
+end =#
 _mutable_hygiene(m::MutableStorage) = NamedTuple{keys(m)}(map(copy, values(m)))
 _mutable_hygiene(m::NamedTuple) = let pt=getpropertytypes(m); NamedTuple{keys(m)}(map(k->R{pt[k]}(m[k]), keys(m))) end
 
 "_prototype_hygiene(proto) : ensure prototype is a tuple, and eliminate any copies of the same prototype."
 _prototype_hygiene(p) = (p,)
 _prototype_hygiene(p::ProtoType) = foldr((x,acc)->any(equiv(x), acc) ? acc : (x, acc...), p; init=())
-"_merge_object(o1, o2) : merge o1 and o2 rightward, merging their `prototype`, `static`, and `mutable` collections. Choose `o2`'s `TypeTag` and `indexable`."
+
+_object_hygiene(dynamic, prototype, static, mutable) = begin
+    d, s, m = _prop_hygiene(dynamic, static, mutable)
+    p = _prototype_hygiene(prototype)
+    (d, p, s, m)
+end
+
+"_merge_object(o1, o2) : merge o1 and o2 rightward, merging their `prototype`, `static`, and `mutable` collections. Choose `o2`'s `TypeTag` and `dynamic`."
 _merge_objects(objl::Object{TypeTagL}, objr::Object{TypeTagR}) where {TypeTagL,TypeTagR} = begin
-    ia, ib = getfield(objl, :indexable),   getfield(objr, :indexable)
-    sa, sb = getfield(objl, :static),      getfield(objr, :static)
-    ma, mb = getfield(objl, :mutable),     getfield(objr, :mutable)
-    pa, pb = getfield(objl, :prototype),   getfield(objr, :prototype)
-    indexable   = isnothing(ib) ? ia : ib
+    da, db = getfield(objl, :dynamic),      getfield(objr, :dynamic)
+    sa, sb = getfield(objl, :static),       getfield(objr, :static)
+    ma, mb = getfield(objl, :mutable),      getfield(objr, :mutable)
+    pa, pb = getfield(objl, :prototype),    getfield(objr, :prototype)
+    d           = isnothing(objl) && isnothing(objr) ? nothing : 
+                  isnothing(objl) ? objr :
+                  isnothing(objr) ? objl :
+                  merge(da, db)
     prototype   = _prototype_hygiene((pa..., pb...))
     s           = (; sa..., sb...)
     m           = (; ma..., mb...)
-    static, mutable = _prop_hygiene(s, m)
-    Object{TypeTagR}(indexable, prototype, static, mutable)
+    dynamic, static, mutable = _prop_hygiene(d, s, m)
+    Object{TypeTagR}(dynamic, prototype, static, mutable)
 end
 
 Object(obj::Object) = obj
 @generated Object(objs...; kwargs...) = begin
-    # extract TypeTag. See comment below for why I had to make this a @generated function.
+    # extract TypeTag from last item. See comment below for why I had to make this a @generated function.
     length(objs) > 0 && objs[end] <: AbstractObject && return :( Object{$(objs[end].parameters[1])}(objs...; kwargs...) )
     :( Object{Any}(objs...; kwargs...) )
 end
 #Object(objs..., objr::Object{TypeTag}; kwargs...) where TypeTag = Object{TypeTag}(objs..., objr; kwargs...) doesn't work yet
 
 Object{TypeTag}(obj::Object{TypeTag}) where TypeTag = obj
-Object{TypeTag}(obj::Object) where TypeTag = Object{TypeTag}(map(copy ∘ Base.Fix1(getfield, obj), (:indexable, :prototype, :static, :mutable))...)
-Object{TypeTag}(objs...; indexable=nothing, prototype=(), static=(;), mutable=(;)) where TypeTag =
-    Object{TypeTag}(objs..., Object{TypeTag}(indexable, _prototype_hygiene(prototype), _prop_hygiene(static, mutable)...))
+Object{TypeTag}(obj::Object) where TypeTag = Object{TypeTag}(map(copy ∘ Base.Fix1(getfield, obj), (:dynamic, :prototype, :static, :mutable))...)
+Object{TypeTag}(objs...; dynamic=nothing, prototype=(), static=(;), mutable=(;)) where TypeTag =
+    Object{TypeTag}(objs..., Object{TypeTag}(_object_hygiene(dynamic, prototype, static, mutable)...))
 
 
 Object{TypeTag}(obj, objs...) where TypeTag = Object{TypeTag}(Object(obj), objs...)
@@ -297,9 +360,6 @@ Base.getindex(::Type{Object}) = let
     
 end
 
-
-
-
 "Template constructor"
 (o::Object{TypeTag})(; kwargs...) where {TypeTag} = begin
     for k ∈ keys(kwargs)  @assert k ∈ propertynames(o, true) "Argument `$k` not in template"  end
@@ -311,15 +371,17 @@ end
             R{getreftype(m[k])}()
         end)
     end
-    Object{TypeTag}(o[], getfield(o, :prototype), static, mutable) #𝓏𝓇
+    cpy(o) = copy(o); cpy(o::Nothing) = nothing
+    Object{TypeTag}(cpy(o[]), getfield(o, :prototype), static, mutable) #𝓏𝓇
 end
 (o::Object)(args...) = o(; merge((;), args)...)
 
+
 """```
-    o = object(s1, s2; m3..., m4...)
-    o = object[](s1, s2; m3..., m4...)
+    o = object((p1, p2), s1, s2; m3..., m4...)
+    o = object[]((p1, p2), s1, s2; m3..., m4...)
 ```
-Convenient `Object` builder with no inheritance. Collections `s1` and `s2` become static properties of `o`, and `m3` and `m4` become mutable properties.
+Convenient `Object` builder. Prototypes `p1` and `p2` become the new object's prototypes, collections `s1` and `s2` become static properties of `o`, and `m3` and `m4` become mutable properties.
 
 Note that even if any of `s1` ... `m4` are `Object`s with their own mutability settings, `o` splats them out and applies its own mutability settings.
 
@@ -327,31 +389,27 @@ Introducing the `[]` indicates that `o` will accept dynamic properties.
 
 Example:
 ```
-    o1 = object(a=1, b=2)   # fully mutable
-    o2 = object((a=1, b=2)) # fully static
-    o3 = object((a=1,), b=2)# part static, part mutable
-    o4 = object(o3)         # fully static
-    o5 = object(; o3...)    # fully mutable
-    o6 = object[](o5)       # :a and :b static, with provisions for dynamically-added properties
+    o1 = object(a=1, b=2)    # fully mutable
+    o2 = object((a=1, b=2))  # fully static
+    o3 = object((a=1,), b=2) # part static, part mutable
+    o4 = object(o3)          # fully static
+    o5 = object(; o3...)     # fully mutable
+    o6 = object[(a=1,)](b=2) # :a dynamic, :b mutable
 ```
 
 """
-object(; var"##ib##"=nothing, kwargs...) = Object(indexable = var"##ib##", mutable = kwargs)
-object(arg; var"##ib##"=nothing, kwargs...) = Object(indexable = var"##ib##", static = (; arg...), mutable = kwargs)
+object(stat=(;); var"#~#dyno#~#"=nothing, var"#~#proto#~#"=(), kwargs...) = 
+    Object(dynamic=var"#~#dyno#~#", prototype=var"#~#proto#~#", static=(; stat...), mutable=kwargs)
+object(proto::Tuple, args...; kwargs...) = object(args...; var"#~#proto#~#"=_prototype_hygiene(proto), kwargs...)
 object(arg1, arg2, args...; kwargs...) = object((; arg1..., arg2...), args...; kwargs...)
 
-struct DynamicStorage{T} d::Dict{Symbol,T} end
-DynamicStorage{T}(; kwargs...) where T = DynamicStorage(Dict{Symbol, T}((k,v) for (k,v) ∈ zip(keys(kwargs), values(kwargs))))
-DynamicStorage(; kwargs...) = DynamicStorage{Any}(; kwargs...)
-DynamicStorage(p::Pair...) = DynamicStorage(Dict{Symbol,Any}(p...))
-Base.show(io::IO, d::DynamicStorage{T}) where T = print(io, "Objects.DynamicStorage{$T}(" * join(("$k = $v" for (k,v) ∈ zip(keys(d.d), values(d.d))), ", ") * ")")
-const DynamicObject = AbstractObject{<:Any, <:DynamicStorage}
-
-struct IndexableBuilder{I} i::I end
-Base.getindex(::typeof(object)) = IndexableBuilder(DynamicStorage())
-Base.getindex(::typeof(object), d::Union{AbstractDict, AbstractArray, DynamicStorage}) = IndexableBuilder(d)
-Base.getindex(::typeof(object), d::Union{AbstractObject, NamedTuple}) = IndexableBuilder(DynamicStorage(; d...))
-(ib::IndexableBuilder)(args...; kwargs...) = object(args...; kwargs..., var"##ib##"=ib.i)
+struct DynamicBuilder{D} i::D end
+Base.getindex(::typeof(object)) = DynamicBuilder(DynamicStorage())
+Base.getindex(::typeof(object), d) = DynamicBuilder(DynamicStorage(d))
+Base.getindex(::typeof(object), d::Union{AbstractObject, NamedTuple}) = DynamicBuilder(DynamicStorage(; d...))
+Base.getindex(::typeof(object), p::Pair...) = DynamicBuilder(DynamicStorage(; p...))
+Base.getindex(::typeof(object), p::NTuple{N,Pair} where N) = DynamicBuilder(DynamicStorage(; p...))
+(ib::DynamicBuilder)(args...; kwargs...) = object(args...; kwargs..., var"#~#dyno#~#"=ib.i)
 
 struct Method{F,X<:AbstractObject} f::F; x::X end
 (f::Method)(args...; kwargs...) = f.f(f.x, args...; kwargs...)
@@ -394,15 +452,15 @@ Base.setproperty!(o::AbstractObject, s::Symbol, x) = begin
 end
 Base.propertynames(o::AbstractObject) = keys(getpropertytypes(o))
 Base.propertynames(o::DynamicObject) = Tuple(keys(merge(map(NamedTuple, getfield(o, :prototype))..., NamedTuple(o))))
-_NamedTuple(o::AbstractObject) = let pts=getpropertytypes(o); NamedTuple{keys(pts), Tuple{values(pts)...}}(map(Base.Fix1(getproperty,o), keys(pts))) end
-Base.NamedTuple(o::AbstractObject) = _NamedTuple(o)
-Base.NamedTuple(o::DynamicObject) = merge(NamedTuple(o[].d), _NamedTuple(o))
+InnateNamedTuple(o::AbstractObject) = let pts=getpropertytypes(o); NamedTuple{keys(pts), Tuple{values(pts)...}}(map(Base.Fix1(getproperty,o), keys(pts))) end
+Base.NamedTuple(o::AbstractObject) = InnateNamedTuple(o)
+Base.NamedTuple(o::DynamicObject) = merge(NamedTuple(o[].d), InnateNamedTuple(o))
 Base.merge(o::AbstractObject) = o
 Base.merge(ol::AbstractObject, or::AbstractObject{TypeTag}, args...) where TypeTag = 
     merge(getfield(parentmodule(typeof(or)), nameof(typeof(or))){TypeTag}(ol, or), args...)
 Base.merge(nt::NamedTuple, o::AbstractObject, args...) = merge(merge(nt, NamedTuple(o)), args...)
 Base.merge(nt::NamedTuple, o::DynamicObject, args...) = merge(merge(nt, NamedTuple(o[].d), NamedTuple(o)), args...)
-Base.getindex(o::AbstractObject) = getfield(o, :indexable)
+Base.getindex(o::AbstractObject) = getfield(o, :dynamic)
 
 Base.iterate(o::AbstractObject, n) = nothing
 Base.iterate(o::AbstractObject) = (o, nothing)
@@ -411,32 +469,42 @@ Base.length(o::AbstractObject) = 1
 Base.keys(o::AbstractObject) = propertynames(o)
 Base.values(o::AbstractObject) = map(Base.Fix1(getproperty, o), propertynames(o))
 
-Base.getindex(o::AbstractObject, k...) = getindex(o[], k...)
-Base.setindex!(o::AbstractObject, x, k...) = setindex!(o[], x, k...)
-Base.firstindex(o::AbstractObject) = firstindex(o[])
-Base.lastindex(o::AbstractObject) = lastindex(o[])
+Base.getindex(o::AbstractObject, n) = getproperty(o, Symbol(n))
+Base.setindex!(o::AbstractObject, x, n) = setproperty!(o, Symbol(n), x)
+Base.haskey(o::AbstractObject, n) = Symbol(n) ∈ propertynames(o)
+Base.get(o::AbstractObject, n, default) = haskey(o, n) ? o[n] : default
+Base.get(f::Function, o::AbstractObject, n) = haskey(o, n) ? o[n] : f()
+Base.get!(o::AbstractObject, n, default) = haskey(o, n) ? o[n] : (o[n] = default)
+Base.get!(f::Function, o::AbstractObject, n) = haskey(o, n) ? o[n] : (o[n] = f())
+Base.getkey(o::AbstractObject, n, default) = haskey(o, n) ? n : default
+# Base.delete!
+# Base.pop!
+Base.pairs(o::AbstractObject) = (k=>v for (k,v) ∈ zip(keys(o), values(o)))
+# Base.mergewith
+Base.keytype(::AbstractObject) = Symbol
 
-Base.:(==)(a::Object{TypeTag1}, b::Object{TypeTag2}) where {TypeTag1,TypeTag2} = begin
-    TypeTag1 == TypeTag2 && a[] == b[] &&
-    getfield(a, :static) == getfield(b, :static) &&
-    getfield(a, :mutable) == getfield(b, :mutable) && 
+
+
+Base.:(==)(a::Object, b::Object) = 
+    typeof(a) == typeof(b)  && a[] == b[] &&
+    getfield(a, :static)    == getfield(b, :static) &&
+    getfield(a, :mutable)   == getfield(b, :mutable) && 
     getfield(a, :prototype) == getfield(b, :prototype)
-end
 Base.copy(o::AbstractObject) = o()
 
 Base.show(io::IO, o::Object{TypeTag}) where TypeTag = begin
-    istr = replace("$(o[])", "\n" => "\n    ")
+    istr = replace("$(isnothing(o[]) ? nothing : NamedTuple(o[].d))", "\n" => "\n    ")
     s = getfield(o, :static)
     sstr = isempty(s) ? "(;)" : replace("$s", "\n" => "\n    ")
     mstr = replace("$(getfield(o, :mutable))", "\n" => "\n    ")
     pstr = replace("$(getfield(o, :prototype))", "\n" => "\n    ")
-    print(io, "Object{$TypeTag}(\n    indexable = $istr\n    prototype = $pstr\n    static    = $sstr\n    mutable   = $mstr\n)")
+    print(io, "Object{$TypeTag}(\n    dynamic   = $istr,\n    prototype = $pstr,\n    static    = $sstr,\n    mutable   = $mstr\n)")
 end
 
 drop(o::Object{TypeTag}, props::Val{P}) where {TypeTag,P} = begin
     args = P isa Symbol ? (P,) : P
     @assert args isa NTuple{N,Symbol} where N "Cannot drop non-Symbol identifiers"
-    i = getfield(o, :indexable)
+    i = getfield(o, :dynamic)
     s = getfield(o, :static)
     m = getfield(o, :mutable)
     p = getfield(o, :prototype)
@@ -445,7 +513,7 @@ drop(o::Object{TypeTag}, props::Val{P}) where {TypeTag,P} = begin
     ks = filter(k->k∉args, keys(s))
     km = filter(k->k∉args, keys(m))
     Object{TypeTag}(
-        indexable = i, 
+        dynamic = i, 
         static = let pts=getpropertytypes(s); NamedTuple{ks, Tuple{map(Base.Fix1(getindex, pts), ks)...}}(map(Base.Fix1(getindex, s), ks)) end,
         mutable = let pts=getpropertytypes(m); NamedTuple{km, Tuple{map(k->R{pts[k]}, km)...}}(map(Base.Fix1(getindex, m), km)) end, 
         prototype=p
@@ -459,13 +527,18 @@ ownpropertynames(o::AbstractObject) = (staticpropertynames(o)..., mutablepropert
 
 
 
+proptypes(o) = begin end
+proptypes(o::Object) = begin end
+
+#Create new function for dynamic type checks
+
+#proptypes(o::Object) -> returns union of all property types, including those of dynamic objects
+#e.g. (if proptypes(my_obj) <: proptypes(template_type))
+#returns Prop{>:Union{Prop{:a,Int}, Prop{:b, Number}}} etc.
+    
 
 
-
-
-
-
-#struct ObjectViewer{TypeTag, I, P, PTM, } <: AbstractObject{TypeTag, I, PT, PTM}
+#struct ObjectViewer{TypeTag, D, P, PTM, } <: AbstractObject{TypeTag, D, PT, PTM}
 #
 #end
 #

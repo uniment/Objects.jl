@@ -1,15 +1,3 @@
-Create new function for dynamic type checks
-
-proptypes(o::Object) -> returns Union{} of all property types, including those of dynamic objects
-e.g. (if proptypes(my_obj) <: proptypes(template_type))
-returns Prop{>:Union{Prop{:a,Int}, Prop{:b, Number}}} etc.
-
-change indexable to dynamic
-
-Change default constructor to use kwargs only, and use var"#stuff#" to make hard to access
-Make default constructor as easy to use as `object`, so that it's not necessary anymore
-
-Object[dynprops]((proto1,), staticprops; mutableprops...)
 
 
 
@@ -17,6 +5,156 @@ Object[dynprops]((proto1,), staticprops; mutableprops...)
 
 
 
+
+
+
+
+
+
+
+
+
+
+Record bug:
+julia> :(if Int <: Int  :hey  else  :ho  end)
+:(if Int <: Int:hey
+  else
+      #= REPL[25]:1 =#
+      :ho
+  end)
+
+This isn't a bug. Just a weird consequence of parsing rules that you only run into for generated functions, where symbols and expressions get their `:` stolen for a Colon.
+
+This is funny though:
+
+julia> :(if(Int <: Int)  :hey  else  :ho  end)
+:(if (Int <: Int):hey
+  else
+      #= REPL[32]:1 =#
+      :ho
+  end)
+
+julia> :(if(Int <: Int)  (:hey)  else  :ho  end)
+ERROR: syntax: space before "(" not allowed in "Int <: Int (" at REPL[31]:1
+
+This is what you want:
+
+julia> :(if Int <: Int;  :hey  else  :ho  end)
+:(if Int <: Int
+      #= REPL[33]:1 =#
+      :hey
+  else
+      #= REPL[33]:1 =#
+      :ho
+  end)
+
+Hah:
+julia> if true  :hey  else  :ho  end
+ERROR: UndefVarError: hey not defined
+
+julia> if true  (:hey)  else  :ho  end
+ERROR: syntax: space before "(" not allowed in "true (" at REPL[42]:1
+
+julia> if true;  :hey  else  :ho  end
+:hey
+
+
+
+
+
+
+
+Record bug:
+
+julia> f(arr1, arr2) = map(i->arr1[i], arr2)
+f (generic function with 1 method)
+
+julia> f([1,2,3], [1,2,3])
+3-element Vector{Int64}:
+ 1
+ 2
+ 3
+
+julia> @generated f(arr1, arr2) = :( map(i->arr1[i], arr2) )
+f (generic function with 1 method)
+
+julia> f([1,2,3], [1,2,3])
+ERROR: The function body AST defined by this @generated function is not pure. This likely means it contains a closure, a comprehension or a generator.
+
+julia> @generated f(arr1, arr2) = :( map(let arr1=arr1; i->arr1[i] end, arr2) )
+f (generic function with 1 method)
+
+julia> f([1,2,3],[1,2,3])
+ERROR: The function body AST defined by this @generated function is not pure. This likely means it contains a closure, a comprehension or a generator.
+
+
+
+
+This causes error: ERROR: MethodError: no method matching isless(::Type{Nothing}, ::Type{Nothing})
+@generated _prop_hygiene(dynamic::D, static, mutable) where D = begin
+    dynhygiene = if D <: Nothing  :dynamic
+    else quote
+        let dyn = DynamicStorage(dynamic)
+            dkeys = filter(k->k ∉ keys(m) && k ∉ keys(s), keys(dyn))
+            DynamicStorage(map(k->k=>dyn[k], dkeys))
+        end
+    end end
+    quote
+        s, m = NamedTuple(static), _mutable_hygiene(NamedTuple(mutable))
+        skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
+        s = NamedTuple{skeys, Tuple{map(Base.Fix1(getfield, getpropertytypes(s)), skeys)...}}(map(Base.Fix1(getfield, s), skeys))
+        d = $dynhygiene 
+        (d, s, m)
+    end
+end
+
+This causes error: ERROR: The function body AST defined by this @generated function is not pure. This likely means it contains a closure, a comprehension or a generator.
+@generated _prop_hygiene(dynamic::D, static, mutable) where D = begin
+    if D <: Nothing  dynhygiene = :dynamic
+    else dynhygiene = quote
+        let dyn = DynamicStorage(dynamic)
+            dkeys = filter(k->k ∉ keys(m) && k ∉ keys(s), keys(dyn))
+            DynamicStorage(map(k->k=>dyn[k], dkeys))
+        end
+    end end
+    quote
+        s, m = NamedTuple(static), _mutable_hygiene(NamedTuple(mutable))
+        skeys = filter(!Base.Fix2(∈, keys(m)), keys(s))
+        s = NamedTuple{skeys, Tuple{map(Base.Fix1(getfield, getpropertytypes(s)), skeys)...}}(map(Base.Fix1(getfield, s), skeys))
+        d = $dynhygiene 
+        (d, s, m)
+    end
+end
+
+
+
+
+
+Code to bugger your environment
+
+julia> for n ∈ rand(1:100_000, 100)  s=Symbol("#$n#$(n+1)"); eval(:( $s = 0 ))  end
+
+julia> x->x^2
+ERROR: cannot declare #13#14 constant; it already has a value
+
+
+
+
+
+julia> h() = begin
+           a = true
+           function f end
+           if rand(Bool)
+               function f() end
+           else
+               function f(x) end
+           end
+           f
+       end
+h (generic function with 1 method)
+
+julia> h()
+ERROR: UndefVarError: f not defined
 
 
 
