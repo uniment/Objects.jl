@@ -1,6 +1,7 @@
 module Objects
 
-export object, Object, Undef, hasprops, propsmatch, typematch, drop, getprototypes, property_type_assembler, getpropertytypes
+export AbstractObject, Object, PropType, PropertyTypes, InnatePropertyTypes, Undef, ObjectViewer
+export object, hasprops, propsmatch, typematch, typeeffective, drop, getprototypes, getfieldtypes, propertytypes, innatepropertytypes
 
 include("object.jl")
 using .Internals

@@ -1,16 +1,18 @@
+Start thread on parsing weirdnesses
+
+if true  :hi  else  :bye  end
+[1 - 2] [1-2] [1 -2]
+@show(1 - 2) @show(1-2) @show(1 -2)
+@show 1 - 2  @show 1-2  @show 1 -2
+x = true; if x  -1  else  2  end
 
 
 
 
 
-
-
-
-
-
-
-
-
+Another bug:
+ft(o::T) = T.types          # type-stable
+ft(o::T) = fieldtypes(T)    # type-unstable
 
 
 
