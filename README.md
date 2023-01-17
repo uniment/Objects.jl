@@ -1,3 +1,9 @@
+🚧🚧🚧
+
+This documentation is completely broken, because I've rearchitected this module from scratch. It's still a WIP. Come back later! 🚧🚧🚧
+
+🚧🚧🚧
+
 # Objects.jl
 
 Dynamic, Static, and Mutable Objects with Composition, Template Replication, Prototype Inheritance, Method Membership, and Type Tagging for Julia (whew!)

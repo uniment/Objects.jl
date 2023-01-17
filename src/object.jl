@@ -129,7 +129,7 @@ DynamicStorage{T}(d) where T = DynamicStorage{T}(Dict{Symbol,T}(d))
 DynamicStorage{T}(; kwargs...) where T = DynamicStorage{T}(NamedTuple(kwargs))
 DynamicStorage(d) = DynamicStorage{Any}(d)
 DynamicStorage(; kwargs...) = DynamicStorage(NamedTuple(kwargs))
-DynamicStorage(p::Pair...) = DynamicStorage(; p...)
+DynamicStorage(p::Pair...) = DynamicStorage{Any}(Dict{Symbol,Any}(p))
 Base.getindex(d::DynamicStorage, k::Symbol) = d.d[k]
 Base.setindex(d::DynamicStorage, x, k::Symbol) = (d.d[k] = x;)
 Base.keys(d::DynamicStorage) = keys(d.d)
@@ -154,7 +154,7 @@ See also `object`, which is a more convenient `Object` builder for simple `Objec
 ```
 Construct an `Object` with optional type annotation `TypeTag`.
 
-`dynamic` can be any object which is ideally (but not necessarily) accessible by index. To access index `i` of `dynamic`, use `o[i]`. To access `dynamic` itself, use `o[]`.
+`dynamic` must be an Objects.Dynamic container.
 
 `prototype` can be any object, or a `Tuple` of objects, that the `Object` will inherit properties from. If a property is not present in the object's own properties, then a search is made of its prototype(s).
 
@@ -162,7 +162,7 @@ Construct an `Object` with optional type annotation `TypeTag`.
 
 Whenever conflicts arise, they are resolved by merging in a left-to-right fashion. For example, if there are two prototypes `(pa, pb)` that both have the same property, then it is taken from `pb`. Likewise, an object's own static properties override its prototype-inherited properties, and mutable properties override static.
 
-Examples:
+Examples (feel free to run @btime on all of them):
 ```
     o1 = Object(static=(a=1, b=2), mutable=(b=3, c=4))
     (; a, b, c) = o1
@@ -172,10 +172,9 @@ Examples:
 
     o2 = Object(static=(a=0,))
 
-    o3 = Object(dynamic=[1,2,3], prototype=(o1,o2), mutable=(c=5,))
-    o3[2]       # 2 (index read)
-    o3[2] = 6   # ok (index write)
-    o3[]        # [1, 6, 3]
+    o3 = Object(dynamic=(x=[1,2,3],), prototype=(o1,o2), mutable=(c=5,))
+    o3.x
+    o3.x = "hi" # dynamic properties are untyped
     o3.c        # 5 (own property overrides prototype)
     o3.a        # 0 (o2 dominates o1)
     o3.b        # 0 (prototype access)
@@ -201,6 +200,12 @@ Additionally, every `Object` is callable, serving as a template to construct a r
 ```
 The type annotation `TypeTag` is optional, and can be used for dispatch (as a form of self-type-identification for any method which respects it). The interface of an `Object` can be tested using `hasprops`, `propsmatch`, or `typematch`. 
 
+Finally, `Object`s can be constructed from objects of other types. Example:
+```
+    struct Foo{A,B} a::A; b::B end
+    mutable struct Bar{B,C} b::B; c::C end
+    Object(Foo(1,2), Bar(3,4))
+```
 See also: `AbstractObject`, `ObjectViewer`, `object`, `Undef`, `hasprops`, `propsmatch`, `typematch`."""
 struct Object{TypeTag, D, PT, PTM, P<:ProtoType, S<:StaticStorage, M<:MutableStorage} <: AbstractObject{TypeTag, D, PT, PTM}
     dynamic::D
@@ -289,7 +294,7 @@ Example:
     o2 isa hasprops(o1) # true
     o1 isa hasprops(o2) # false
 ```"""
-hasprops(::AbstractObject{<:Any,<:Any,PT}) where PT = AbstractObject{<:Any,<:Any,Props} where {Props>:PT}
+hasprops(::AbstractObject{TT,D,PT}) where {TT,D,PT} = AbstractObject{TypeTag, Dynamic, Props} where {TypeTag, Dynamic, Props>:PT}
 "    propsmutable(o::AbstractObject)\n\nConstruct a type which tests for `Object`s that have *at least* the mutable properties of `o`.\n\nSee also: hasprops"
 propsmutable(::AbstractObject{<:Any,<:Any,<:Any,PTM}) where PTM = AbstractObject{<:Any,<:Any,<:Any,MutableProps} where {MutableProps>:PTM}
 """```
@@ -318,8 +323,8 @@ Example:```
     a = object((a=1,); b=2)     # :a static, :b mutable
     b = object(a=1, b=2, c=3)   # :a, :b, and :c mutable
     b isa typematch(a)
-```"""
-Base.@pure typematch(::AbstractObject{TT,D,PT,PTM}) where {TT,D,PT,PTM} = 
+```""" # Why is the runtime so bad though? Why can't it constant-fold, even wtih Base.@pure??
+typematch(::AbstractObject{TT,D,PT,PTM}) where {TT,D,PT,PTM} = 
     isbits(TT) ? AbstractObject{TT, Dynamic, Props, MutableProps} where {Dynamic<:D, Props>:PT, MutableProps>:PTM} : 
     AbstractObject{TypeTag, Dynamic, Props, MutableProps} where {TypeTag<:TT, Dynamic<:D, Props>:PT, MutableProps>:PTM}
 """```
@@ -363,9 +368,9 @@ _merge_objects(objl::Object, objr::Object{TypeTag}) where TypeTag = begin
     sa, sb = getfield(objl, :static),       getfield(objr, :static)
     ma, mb = getfield(objl, :mutable),      getfield(objr, :mutable)
     pa, pb = getfield(objl, :prototype),    getfield(objr, :prototype)
-    d           = isnothing(objl) && isnothing(objr) ? nothing : 
-                  isnothing(objl) ? objr :
-                  isnothing(objr) ? objl :
+    d           = isnothing(da) && isnothing(db) ? nothing : 
+                  isnothing(da) ? db :
+                  isnothing(da) ? db :
                   merge(da, db)
     prototype   = _prototype_hygiene((pa..., pb...))
     s           = (; sa..., sb...)
@@ -401,7 +406,18 @@ Base.getindex(::Type{Object}) = let
     
 end
 
-"Template constructor"
+"""```
+    (o::Object)(; kwargs...)
+```
+Template constructor. Calling an instance of `Object` creates a new `Object` with the same properties of the same types, whose values default to those of the template. Use keyword arguments to set new values.
+
+Example:
+```
+    o = object((a=1,); b=2) # :a static, :b mutable
+    o(a=2, b=3)             # :a static, :b mutable with new values
+    o()                     # create replica
+    o(c=3)                  # error
+```"""
 (o::Object{TypeTag})(; kwargs...) where {TypeTag} = begin
     for k ∈ keys(kwargs)  @assert k ∈ propertynames(o, true) "Argument `$k` not in template"  end
     static = let s=getfield(o, :static); NamedTuple{keys(s)}(map(k->k∈keys(kwargs) ? kwargs[k] : s[k], keys(s))) end
@@ -412,8 +428,8 @@ end
             R{getreftype(m[k])}()
         end)
     end
-    cpy(o) = copy(o); cpy(o::Nothing) = nothing
-    Object{TypeTag}(cpy(o[]), getfield(o, :prototype), static, mutable) #𝓏𝓇
+    dynamic = isnothing(o[]) ? nothing : typeof(o[])(k∈keys(kwargs) ? k=>kwargs[k] : k=>o[][k] for (k,v) ∈ zip(keys(o[]), values(o[])))
+    Object{TypeTag}(dynamic, getfield(o, :prototype), static, mutable) #𝓏𝓇
 end #𝓏𝓇
 (o::Object)(args...) = o(; merge((;), args)...)
 
@@ -572,6 +588,13 @@ staticpropertytypes(o)          = ismutable(o) ? () : innatepropertytypes(o)
 mutablepropertytypes(o::Object) = innatepropertytypes(getfield(o, :mutable))
 mutablepropertytypes(o)         = ismutable(o) ? innatepropertytypes(o) : ()
 
+
+"""```
+    ObjectViewer(objects::Tuple, propids::NamedTuple{<:Any, <:NTuple{N,Int} where N})
+    ObjectViewer(; kwargs...)
+```
+
+"""
 struct ObjectViewer{TypeTag, D, PT, PTM, OT, PID} <: AbstractObject{TypeTag, D, PT, PTM}
     objects::OT
     propids::PID
